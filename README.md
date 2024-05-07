@@ -1,3 +1,3 @@
-# aind-capsule-template
+# iGluSnFR-simulation
 
-Basic structure of a capsule to be customized as needed.
+This capsule simulates iGluSnFR data.
