@@ -1,4 +1,4 @@
-# hash:sha256:3207e9c511eb132e1c02efe4a7f505ec10d4f7168ce3c4a616de55d1afa43a80
+# hash:sha256:20d15f3448fd4788c67ff9f7f3a50f41a18fd7977a87a8b17574eeab08e0c85f
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:23.1.0-4-python3.10.12-ubuntu22.04
 
@@ -10,6 +10,7 @@ COPY git-askpass /
 
 RUN pip install -U --no-cache-dir \
     argparse \
+    h5py==3.11.0 \
     numpy==1.26.4 \
     scanimage-tiff-reader==1.4.1.4 \
     scipy==1.13.0 \

@@ -1,5 +1,6 @@
 import os
 import re
+import h5py
 import random
 import argparse
 import numpy as np
@@ -81,7 +82,7 @@ def run(params, data_dir, output_path):
                 A = A.data()
                 
                 A = A.T
-                print('A shape:', A.shape)
+                # print('A shape:', A.shape)
                 IMavg = np.nanmean(A, axis=2)
                 # IMavg = IMavg.T
                 IMavg[np.isnan(IMavg)] = 0
@@ -171,36 +172,39 @@ def run(params, data_dir, output_path):
                     Ad = np.reshape(Ad, (Ad.shape[0], Ad.shape[1], numChannels, -1))
                     Ad = np.array(Ad, dtype=np.float32)
                     sz = Ad.shape
-                    
-                    # T0 = np.pad(IMavg[selR, :][:, selC], pad_width=params['maxshift'], mode='constant', constant_values=0)
-                    # template = T0
 
                     GT['activity'] = activity
 
                     # initR = 0
                     # initC = 0
                     nDSframes = sz[3] // params['dsFac']  # number of downsampled frames
-                    # motionDSr = np.full(nDSframes, np.nan)
-                    # motionDSc = np.full(nDSframes, np.nan)
-                    # aErrorDS = np.full(nDSframes, np.nan)
-                    # aRankCorr = np.full(nDSframes, np.nan)
-                    # viewR, viewC = np.meshgrid((np.arange(0, sz[0] + 2*params['maxshift']) - params['maxshift']), (np.arange(0, sz[1] + 2*params['maxshift']) - params['maxshift']), indexing='ij')
-                    
+
                     # Create the output directory path by joining the output_path with the simulation directories
                     output_directory = os.path.join(output_path, 'SIMULATIONS', params['SimDescription'])
                     
                     # Create the directory if it doesn't exist
-                    os.makedirs(output_directory, exist_ok=Trßue)
+                    os.makedirs(output_directory, exist_ok=True)
                     
                     # Define the full path for the file to write
                     fnwrite = os.path.join(output_directory, f'{fnstem}.tif')
-                    # with TiffWriter(fnwrite, bigtiff=True) as fTIF:
-                    #     # Write the entire 4D array as a single multi-page TIFF
-                    #     for i in range(Ad.shape[3]):
-                    #         fTIF.save(Ad[:,:,0,i])
-                        # fTIF.write(Ad[:,:,0,:])
                     Ad_reshaped = Ad.transpose(3, 0, 1, 2).reshape(params['T'], params['IMsz'][0], params['IMsz'][1])
                     tifffile.imwrite(fnwrite, Ad_reshaped)
+
+                    # initFrames = 400
+                    # framesToRead = initFrames * dsFac
+
+                    # Y = downsampleTime(Ad[:, :, :, :framesToRead], ds_time)
+
+                    # SIMPARAMS_filename = os.path.join(output_directory, f'{fnstem}_SIMPARAMS.h5')
+
+                    # # Create an HDF5 file
+                    # with h5py.File(SIMPARAMS_filename, 'w') as f:
+                    #     # Create datasets within the HDF5 file
+                    #     f.create_dataset('numChannel', data=params['numChannels'])
+                    #     f.create_dataset('frametime', data=params['frametime'])
+                    #     f.create_dataset('motionC', data=motionC)
+                    #     f.create_dataset('motionR', data=motionR)
+
 
 if __name__ == "__main__": 
     # Create argument parser
