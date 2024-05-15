@@ -340,7 +340,7 @@ def run(params, data_dir, output_path):
                         temp = np.multiply(sFilt , activity[siteN, :].reshape(1, 1, -1))
 
                         # Add temp to corresponding subarray in movie
-                        movie[rr[siteN]-sw:rr[siteN]+sw+1, cc[siteN]-sw:cc[siteN]+sw+1, :] += temp # TOdo: Check rnage of movie and temp. See if they differ by a huge factor. Print and see the movie before conversion to uint16 at every iteration. 
+                        movie[rr[siteN]-sw:rr[siteN]+sw+1, cc[siteN]-sw:cc[siteN]+sw+1, :] += temp 
 
                         # Store sFilt in idealFilts
                         sFilt = np.squeeze(sFilt)  # Remove extra dimension
@@ -485,12 +485,12 @@ def run(params, data_dir, output_path):
                     Ad_reshaped = Ad.transpose(3, 0, 1, 2).reshape(params['T'], params['IMsz'][0], params['IMsz'][1])
                     
                     if params['writetiff']:
-                        print(f'Writing {fnwrite} as tiff...')
                         fnwrite_tif = os.path.join(output_directory, f'{fnstem}.tif')
+                        print(f'Writing {fnwrite_tif} as tiff...')
                         tifffile.imwrite(fnwrite_tif, Ad_reshaped)
                     else:
-                        print(f'Writing {fnwrite} as h5...')
                         fnwrite_AD = os.path.join(output_directory, f'{fnstem}.h5')
+                        print(f'Writing {fnwrite_AD} as h5...')
                         # Create a new h5 file
                         with h5py.File(fnwrite_AD, 'w') as f:
                             # Create a dataset and write the data
@@ -514,15 +514,6 @@ def run(params, data_dir, output_path):
                             for siteIx in range(params['nsites']):
                                 support = IF[:, siteIx] > 0
                                 GT['ROI_activity'][siteIx, frame] = np.dot(tmp[support], IF[support, siteIx])
-                    
-                    # fnwrite_GT = os.path.join(output_directory, f'{fnstem}_Groundtruth.h5')
-
-                    # # Open or create the HDF5 file for writing
-                    # with h5py.File(fnwrite_GT, "w") as f:
-                    #     # Iterate through each item in the dictionary and create a dataset for it
-                    #     for key, value in GT.items():
-                    #         # Create a dataset for each key-value pair
-                    #         f.create_dataset(key, data=value, compression="gzip")
 
                     aData['numChannels'] = 1
                     aData['frametime'] = params['frametime']
@@ -533,22 +524,7 @@ def run(params, data_dir, output_path):
                     aData['motionDSc'] = motionDSc
                     aData['motionDSr'] = motionDSr
 
-                    # fnwrite_AD = os.path.join(output_directory, f'{fnstem}_AlignmentData.h5')
-
-                    # # Open or create the HDF5 file for writing
-                    # with h5py.File(fnwrite_AD, "w") as f:
-                    #     # Iterate through each item in the dictionary and create a dataset for it
-                    #     for key, value in aData.items():
-                    #         # Check if the value is a scalar
-                    #         if np.isscalar(value):
-                    #             # Create a dataset without chunking or filtering options
-                    #             f.create_dataset(key, data=value)
-                    #         else:
-                    #             # Create a dataset with chunking or filtering options
-                    #             f.create_dataset(key, data=value, compression="gzip")
-
-
-                    fnwrite_AD = os.path.join(output_directory, f'{fnstem}.h5')
+                    fnwrite_AD = os.path.join(output_directory, f'{fnstem}_groundtruth.h5')
                     with h5py.File(fnwrite_AD, "w") as f:
                         print(f'Writing {fnwrite_AD} as h5...')
                         f.create_dataset("GT/R", data=GT['R'], compression="gzip")
