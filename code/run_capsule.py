@@ -305,7 +305,7 @@ def run(params, data_dir, output_path):
                 GT['C'] = cc + dc - selC[0] + 1
 
                 # Simulate synapses
-                for trialIx in tqdm(range(1, 2), desc='Simulation Progress'):
+                for trialIx in tqdm(range(1, 6), desc='Simulation Progress'):
                     fnstem = f'SIMULATION_{fn[:11]}{params["SimDescription"]}_Trial{trialIx}'
                     
                     B = params['brightness'] * np.exp(-np.arange(1, params['T'] + 1) / params['bleachTau'])
