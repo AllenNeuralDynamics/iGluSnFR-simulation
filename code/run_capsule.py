@@ -3,6 +3,7 @@ import re
 import h5py
 import random
 import scipy
+import cv2
 import argparse
 import numpy.ma as ma
 import numpy as np
@@ -417,7 +418,8 @@ def run(params, data_dir, output_path):
                             Yq = viewR + motionDSr[DSframe]  # Adjust index for Python's 0-based indexing
 
                             # Perform interpolation using griddata
-                            A = scipy.interpolate.griddata((X.flatten(), Y.flatten()), M.flatten(), (Xq, Yq), method='linear', fill_value=np.nan)
+                            # A = scipy.interpolate.griddata((X.flatten(), Y.flatten()), M.flatten(), (Xq, Yq), method='linear', fill_value=np.nan)
+                            A = cv2.remap(M, Xq.astype(np.float32), Yq.astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=np.nan)
                         
                             sel = ~np.isnan(A)
 
@@ -508,7 +510,8 @@ def run(params, data_dir, output_path):
                             yi = viewR + motionR[frame]
                             
                             # Perform interpolation using griddata
-                            B = griddata((x.flatten(), y.flatten()), Ad[:, :, ch, frame].flatten(), (xi,yi), method='linear', fill_value=np.nan)
+                            # B = griddata((x.flatten(), y.flatten()), Ad[:, :, ch, frame].flatten(), (xi,yi), method='linear', fill_value=np.nan)
+                            B = cv2.remap(Ad[:, :, ch, frame], xi.astype(np.float32), yi.astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=np.nan)
 
                             tmp = np.reshape(B.T, -1)
                             for siteIx in range(params['nsites']):
