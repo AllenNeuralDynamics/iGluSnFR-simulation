@@ -556,28 +556,28 @@ if __name__ == "__main__":
     parser.add_argument('--output', type=str, required=True, help='Output folder to save the results.')
 
     # Add optional arguments with default values
-    parser.add_argument('--SimDescription', type=str, default='Standard2')
-    parser.add_argument('--darkrate', type=float, default=0.02)
-    parser.add_argument('--maxshift', type=int, default=30)
-    parser.add_argument('--IMsz', type=int, nargs=2, default=[125, 45])
-    parser.add_argument('--ds_time', type=int, default=3)
-    parser.add_argument('--clipShift', type=int, default=5)
-    parser.add_argument('--alpha', type=float, default=0.0005)
-    parser.add_argument('--frametime', type=float, default=0.0023)
-    parser.add_argument('--brightness', type=int, default=2)
-    parser.add_argument('--bleachTau', type=int, default=10000)
-    parser.add_argument('--T', type=int, default=10000)
-    parser.add_argument('--motionAmp', type=int, default=50)
-    parser.add_argument('--tau', type=float, default=8 * 1.33)
-    parser.add_argument('--activityThresh', type=float, default=0.12)
-    parser.add_argument('--sigma', type=float, default=1.33) # size of the spatial filter. How big a synapse is in pixels.
-    parser.add_argument('--photonScale', type=int, default=1000)
-    parser.add_argument('--nsites', type=int, default=50)
-    parser.add_argument('--minspike', type=float, default=0.3)
-    parser.add_argument('--maxspike', type=float, default=4)
-    parser.add_argument('--spikeAmp', type=int, default=2)
-    parser.add_argument('--numChannels', type=int, default=1)
-    parser.add_argument('--writetiff', type=bool, default=False)
+    parser.add_argument('--SimDescription', type=str, default='default', desc = 'String describing each simulation.') 
+    parser.add_argument('--darkrate', type=float, default=0.02, desc = 'photon rate added to detector.') 
+    parser.add_argument('--maxshift', type=int, default=30, desc = 'Used for alignment') # Remove it for simulation
+    parser.add_argument('--IMsz', type=int, nargs=2, default=[125, 45]) # Remove this
+    parser.add_argument('--ds_time', type=int, default=3) # Remove as it for aignment 
+    parser.add_argument('--clipShift', type=int, default=5)  # Remove as it for aignment 
+    parser.add_argument('--alpha', type=float, default=0.0005)  # Remove as it for aignment 
+    parser.add_argument('--frametime', type=float, default=0.0023, desc = 'Time between frames in seconds') 
+    parser.add_argument('--brightness', type=int, default=2, desc = 'Proportional factor that multiplies the sample brightness')
+    parser.add_argument('--bleachTau', type=int, default=10000, desc = 'Exponential time constant of bleaching in seconds.')
+    parser.add_argument('--T', type=int, default=10000, desc = 'Number of frames to simulate.')
+    parser.add_argument('--motionAmp', type=int, default=50, desc = 'Factor that multiplies simulated sample movement')
+    parser.add_argument('--tau', type=float, default = 0.027 , desc = 'Time constant of the decay of the indicator in seconds')
+    parser.add_argument('--activityThresh', type=float, default=0.12, desc = 'Lower this threshrold to generate more spikes.')
+    parser.add_argument('--sigma', type=float, default=1.33, desc = 'size of the spatial filter. How big a synapse is in pixels.') # size of the spatial filter. How big a synapse is in pixels.
+    parser.add_argument('--photonScale', type=int, default=1000, desc = 'Amplitude of a single photon in digitizer units.') # Wont vary in practice
+    parser.add_argument('--nsites', type=int, default=50 , desc = 'Number of synapses in a recording.') #
+    parser.add_argument('--minspike', type=float, default=0.3, desc = 'Minimum fractional change in a spiking event.')
+    parser.add_argument('--maxspike', type=float, default=4, desc = 'Maximum fractional change in a spiking event.')
+    parser.add_argument('--spikeAmp', type=int, default=2, desc = 'Mean fractional change in a spiking event.')
+    parser.add_argument('--numChannels', type=int, default=1)  # Remove as it for aignment 
+    parser.add_argument('--writetiff', type=bool, default=False) 
 
     # Parse the arguments
     args = parser.parse_args()
