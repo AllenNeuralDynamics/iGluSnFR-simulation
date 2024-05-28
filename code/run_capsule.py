@@ -352,8 +352,14 @@ def run(params, data_dir, output_path):
                     motionPC1 = np.convolve(np.multiply(envelope, np.sin(np.convolve(np.random.randn(params['T'])**3, np.ones(40)/40, mode='same') / 10)) * params['motionAmp'], np.ones(5)/5, mode='same')
                     motionPC2 = np.convolve(np.multiply(envelope, np.sin(np.convolve(np.random.randn(params['T'])**3, np.ones(40)/40, mode='same') / 10)) * params['motionAmp'], np.ones(5)/5, mode='same')
                     
-                    GT['motionR'] = 0.8 * motionPC1 + 0.4 * motionPC2
-                    GT['motionC'] = 0.2 * motionPC1 - 0.2 * motionPC2
+                    # GT['motionR'] = 0.8 * motionPC1 + 0.4 * motionPC2
+                    # GT['motionC'] = 0.2 * motionPC1 - 0.2 * motionPC2
+
+                    psi = np.pi * np.random.rand(1)
+                    A1 = 1
+                    A2 = 0.25
+                    GT['motionR'] = A1 * (np.cos(psi) * motionPC1 + np.sin(psi) * motionPC2)
+                    GT['motionC'] = A2 * (-np.sin(psi) * motionPC1 + np.cos(psi) * motionPC2)
 
                     Ad = np.zeros((len(selR), len(selC), 1, params['T']), dtype=np.float32)
                     for frameIx in range(params['T'] - 1, -1, -1):
@@ -556,26 +562,26 @@ if __name__ == "__main__":
     parser.add_argument('--output', type=str, required=True, help='Output folder to save the results.')
 
     # Add optional arguments with default values
-    parser.add_argument('--SimDescription', type=str, default='default', desc = 'String describing each simulation.') 
-    parser.add_argument('--darkrate', type=float, default=0.02, desc = 'photon rate added to detector.') 
-    parser.add_argument('--maxshift', type=int, default=30, desc = 'Used for alignment') # Remove it for simulation
+    parser.add_argument('--SimDescription', type=str, default='default', help = 'String describing each simulation.') 
+    parser.add_argument('--darkrate', type=float, default=0.02, help = 'photon rate added to detector.') 
+    parser.add_argument('--maxshift', type=int, default=30, help = 'Used for alignment') # Remove it for simulation
     parser.add_argument('--IMsz', type=int, nargs=2, default=[125, 45]) # Remove this
     parser.add_argument('--ds_time', type=int, default=3) # Remove as it for aignment 
     parser.add_argument('--clipShift', type=int, default=5)  # Remove as it for aignment 
     parser.add_argument('--alpha', type=float, default=0.0005)  # Remove as it for aignment 
-    parser.add_argument('--frametime', type=float, default=0.0023, desc = 'Time between frames in seconds') 
-    parser.add_argument('--brightness', type=int, default=2, desc = 'Proportional factor that multiplies the sample brightness')
-    parser.add_argument('--bleachTau', type=int, default=10000, desc = 'Exponential time constant of bleaching in seconds.')
-    parser.add_argument('--T', type=int, default=10000, desc = 'Number of frames to simulate.')
-    parser.add_argument('--motionAmp', type=int, default=50, desc = 'Factor that multiplies simulated sample movement')
-    parser.add_argument('--tau', type=float, default = 0.027 , desc = 'Time constant of the decay of the indicator in seconds')
-    parser.add_argument('--activityThresh', type=float, default=0.12, desc = 'Lower this threshrold to generate more spikes.')
-    parser.add_argument('--sigma', type=float, default=1.33, desc = 'size of the spatial filter. How big a synapse is in pixels.') # size of the spatial filter. How big a synapse is in pixels.
-    parser.add_argument('--photonScale', type=int, default=1000, desc = 'Amplitude of a single photon in digitizer units.') # Wont vary in practice
-    parser.add_argument('--nsites', type=int, default=50 , desc = 'Number of synapses in a recording.') #
-    parser.add_argument('--minspike', type=float, default=0.3, desc = 'Minimum fractional change in a spiking event.')
-    parser.add_argument('--maxspike', type=float, default=4, desc = 'Maximum fractional change in a spiking event.')
-    parser.add_argument('--spikeAmp', type=int, default=2, desc = 'Mean fractional change in a spiking event.')
+    parser.add_argument('--frametime', type=float, default=0.0023, help = 'Time between frames in seconds') 
+    parser.add_argument('--brightness', type=int, default=2, help = 'Proportional factor that multiplies the sample brightness')
+    parser.add_argument('--bleachTau', type=int, default=10000, help = 'Exponential time constant of bleaching in seconds.')
+    parser.add_argument('--T', type=int, default=10000, help = 'Number of frames to simulate.')
+    parser.add_argument('--motionAmp', type=int, default=50, help = 'Factor that multiplies simulated sample movement')
+    parser.add_argument('--tau', type=float, default = 0.027 , help = 'Time constant of the decay of the indicator in seconds')
+    parser.add_argument('--activityThresh', type=float, default=0.12, help = 'Lower this threshrold to generate more spikes.')
+    parser.add_argument('--sigma', type=float, default=1.33, help = 'size of the spatial filter. How big a synapse is in pixels.') # size of the spatial filter. How big a synapse is in pixels.
+    parser.add_argument('--photonScale', type=int, default=1000, help = 'Amplitude of a single photon in digitizer units.') # Wont vary in practice
+    parser.add_argument('--nsites', type=int, default=50 , help = 'Number of synapses in a recording.') #
+    parser.add_argument('--minspike', type=float, default=0.3, help = 'Minimum fractional change in a spiking event.')
+    parser.add_argument('--maxspike', type=float, default=4, help = 'Maximum fractional change in a spiking event.')
+    parser.add_argument('--spikeAmp', type=int, default=2, help = 'Mean fractional change in a spiking event.')
     parser.add_argument('--numChannels', type=int, default=1)  # Remove as it for aignment 
     parser.add_argument('--writetiff', type=bool, default=False) 
 
