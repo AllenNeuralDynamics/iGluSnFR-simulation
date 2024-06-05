@@ -5,6 +5,7 @@ import random
 import scipy
 import cv2
 import argparse
+import json
 import numpy.ma as ma
 import numpy as np
 import tifffile
@@ -306,7 +307,7 @@ def run(params, data_dir, output_path):
                 GT['C'] = cc + dc - selC[0] + 1
 
                 # Simulate synapses
-                for trialIx in tqdm(range(1, 6), desc='Simulation Progress'):
+                for trialIx in tqdm(range(1, params['numTrials']), desc='Simulation Progress'):
                     fnstem = f'SIMULATION_{fn[:11]}{params["SimDescription"]}_Trial{trialIx}'
                     
                     B = params['brightness'] * np.exp(-np.arange(1, params['T'] + 1) / params['bleachTau'])
@@ -485,7 +486,8 @@ def run(params, data_dir, output_path):
                     # Save the raw data
 
                     # Create the output directory path by joining the output_path with the simulation directories
-                    output_directory = os.path.join(output_path, 'SIMULATIONS', params['SimDescription'])
+                    #output_directory = os.path.join(output_path, 'SIMULATIONS', params['SimDescription'])
+                    output_directory = os.path.join(output_path, params['SimDescription'])
                     
                     # Create the directory if it doesn't exist
                     os.makedirs(output_directory, exist_ok=True)
@@ -552,7 +554,9 @@ def run(params, data_dir, output_path):
                         f.create_dataset("aData/aRankCorr", data=aData['aRankCorr'], compression="gzip")
                         f.create_dataset("aData/motionDSc", data=aData['motionDSc'], compression="gzip")
                         f.create_dataset("aData/motionDSr", data=aData['motionDSr'], compression="gzip")
-
+                    
+                    with open(output_directory + '/simulation_parameters.json', 'w') as f:
+                        json.dump(params, f)
 
 if __name__ == "__main__": 
     # Create argument parser
@@ -570,10 +574,10 @@ if __name__ == "__main__":
     parser.add_argument('--clipShift', type=int, default=5)  # Remove as it for aignment 
     parser.add_argument('--alpha', type=float, default=0.0005)  # Remove as it for aignment 
     parser.add_argument('--frametime', type=float, default=0.0023, help = 'Time between frames in seconds') 
-    parser.add_argument('--brightness', type=int, default=2, help = 'Proportional factor that multiplies the sample brightness')
+    parser.add_argument('--brightness', type=float, default=2, help = 'Proportional factor that multiplies the sample brightness')
     parser.add_argument('--bleachTau', type=int, default=10000, help = 'Exponential time constant of bleaching in seconds.')
     parser.add_argument('--T', type=int, default=10000, help = 'Number of frames to simulate.')
-    parser.add_argument('--motionAmp', type=int, default=50, help = 'Factor that multiplies simulated sample movement')
+    parser.add_argument('--motionAmp', type=float, default=50, help = 'Factor that multiplies simulated sample movement')
     parser.add_argument('--tau', type=float, default = 0.027 , help = 'Time constant of the decay of the indicator in seconds')
     parser.add_argument('--activityThresh', type=float, default=0.12, help = 'Lower this threshrold to generate more spikes.')
     parser.add_argument('--sigma', type=float, default=1.33, help = 'size of the spatial filter. How big a synapse is in pixels.') # size of the spatial filter. How big a synapse is in pixels.
@@ -582,7 +586,8 @@ if __name__ == "__main__":
     parser.add_argument('--minspike', type=float, default=0.3, help = 'Minimum fractional change in a spiking event.')
     parser.add_argument('--maxspike', type=float, default=4, help = 'Maximum fractional change in a spiking event.')
     parser.add_argument('--spikeAmp', type=int, default=2, help = 'Mean fractional change in a spiking event.')
-    parser.add_argument('--numChannels', type=int, default=1)  # Remove as it for aignment 
+    parser.add_argument('--numChannels', type=int, default=1)  # Remove as it for aignment
+    parser.add_argument('--numTrials', type=int, default=5) 
     parser.add_argument('--writetiff', type=bool, default=False) 
 
     # Parse the arguments
@@ -616,5 +621,6 @@ if __name__ == "__main__":
     params['spikeAmp'] = args.spikeAmp
     params['numChannels'] = args.numChannels
     params['writetiff'] = args.writetiff
+    params['numTrials'] = args.numTrials
 
     run(params, data_dir, output_path)

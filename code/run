@@ -2,4 +2,71 @@
 set -ex
 pwd
 ls ../data
-python -u run_capsule.py --input ../data/scan_00003_20230815_162233_iGluSnFR/scan_00003_20230815_162233/ --output ../results/test/ --writetiff True
+# python -u run_capsule.py --input ../data/scan_00003_20230815_162233_iGluSnFR/scan_00003_20230815_162233/ --output ../results/test/ --writetiff True
+
+# Define the ranges for motionAmp and brightness
+motionAmp_values=(12.5 25 50 100 200)
+brightness_values=(2 0.2 0.02 20 200)
+
+# motionAmp_values=(12.5 25)
+# brightness_values=(2 0.2)
+
+# Base command
+base_command="python -u run_capsule.py --input ../data/scan_00003_20230815_162233_iGluSnFR/scan_00003_20230815_162233/ --writetiff True"
+
+# Counter for test directories and SimDescription
+counter=1
+
+# Maximum number of parallel processes
+max_parallel=6
+
+# Output directory for results
+output_dir="../results/"
+
+# Create the output directory if it doesn't exist
+mkdir -p "$output_dir"
+
+# Initialize the CSV file
+csv_file="${output_dir}parameters.csv"
+echo "SimDescription,motionAmp,brightness" > "$csv_file"
+
+# Function to run a command and save parameters to CSV
+run_command() {
+  local motionAmp=$1
+  local brightness=$2
+  local counter=$3
+  local output_path="${output_dir}"
+  
+  # Create the output directory if it doesn't exist
+  mkdir -p "$output_path"
+  
+  # Construct the full command
+  local full_command="$base_command --output $output_path --motionAmp $motionAmp --brightness $brightness --SimDescription $counter --numTrials 15"
+  
+  # Print and run the command in the background
+  echo "Running: $full_command"
+  eval "$full_command" &
+  
+  # Append the parameters to the CSV file
+  echo "$counter,$motionAmp,$brightness" >> "$csv_file"
+}
+
+# Loop through all combinations of motionAmp and brightness
+for motionAmp in "${motionAmp_values[@]}"; do
+  for brightness in "${brightness_values[@]}"; do
+    # Run the command
+    run_command "$motionAmp" "$brightness" "$counter"
+    
+    # Increment the counter
+    counter=$((counter + 1))
+    
+    # Check the number of background processes
+    while [ "$(jobs -r | wc -l)" -ge "$max_parallel" ]; do
+      # Wait for any background process to complete
+      wait -n
+    done
+  done
+done
+
+# Wait for all background processes to complete
+wait
