@@ -13,7 +13,7 @@ from tqdm import tqdm
 from scipy.signal import convolve
 from ScanImageTiffReader import ScanImageTiffReader
 from scipy.interpolate import griddata
-from scipy.ndimage import median_filter, gaussian_filter, shift
+from scipy.ndimage import median_filter, gaussian_filter, shift, uniform_filter1d
 from scipy.interpolate import interp1d, PchipInterpolator
 
 def dftregistration_clipped(buf1ft, buf2ft, usfac=1, clip=None):
@@ -312,8 +312,17 @@ def run(params, data_dir, output_path):
                     
                     B = params['brightness'] * np.exp(-np.arange(1, params['T'] + 1) / params['bleachTau'])
                     activity = np.zeros((params['nsites'], params['T']))
-                    spikes_prob = np.random.rand(*activity.shape) < params['activityThresh']
-                    spikes = np.random.rand(*activity.shape) < spikes_prob.mean(axis=1)[:, None]**2
+                    # Generate random data
+                    random_data = np.random.rand(*activity.shape)
+
+                    # Apply threshold
+                    thresholded_data = random_data < params['activityThresh']
+
+                    # Smooth the data with a moving mean
+                    smoothed_data = uniform_filter1d(thresholded_data.astype(float), size=40, axis=1)
+
+                    # Generate spikes
+                    spikes = np.random.rand(*activity.shape) < smoothed_data**2
                     
                     activity[spikes] = np.minimum(
                         params['maxspike'],
