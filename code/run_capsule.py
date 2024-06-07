@@ -236,7 +236,7 @@ def run(params, data_dir, output_path):
     params = params
 
     numChannels = 1
-    np.random.seed(1) # Seed for reproducability 
+    #np.random.seed(1) # Seed for reproducability 
 
     fns = [fn for fn in os.listdir(data_dir) if fn.endswith('.tif') and 'REGISTERED_DOWNSAMPLED-8x' in fn]
 

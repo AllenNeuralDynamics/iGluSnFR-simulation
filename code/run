@@ -20,7 +20,7 @@ max_parallel=10
 # Output directory for results
 output_dir="../results/"
 
-# Create the output directory if it doesn't exist
+# Create the output dßirectory if it doesn't exist
 mkdir -p "$output_dir"
 
 # Initialize the CSV file
@@ -39,7 +39,7 @@ run_command() {
   mkdir -p "$output_path"
   
   # Construct the full command
-  local full_command="$base_command --input $input_dir --output $output_path --motionAmp $motionAmp --brightness $brightness --SimDescription $counter --numTrials 15"
+  local full_command="$base_command --input $input_dir --output $output_path --motionAmp $motionAmp --brightness $brightness --SimDescription $counter --numTrials 10"
   
   # Retry logic
   local max_retries=5
