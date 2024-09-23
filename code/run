@@ -41,6 +41,9 @@ run_command() {
   local counter=$5
   local output_path="${output_dir}"
   
+  # Append the parameters to the CSV file
+  echo "$counter,$motionAmp,$brightness,$nsites,$(basename $input_dir)" >> "$csv_file"
+  
   # Create the output directory if it doesn't exist
   mkdir -p "$output_path"
   
@@ -70,13 +73,10 @@ run_command() {
     echo "Command failed after $max_retries attempts."
     exit 1
   fi
-  
-  # Append the parameters to the CSV file
-  echo "$counter,$motionAmp,$brightness,$nsites,$(basename $input_dir)" >> "$csv_file"
 }
 
 # Get all subdirectories under ../data/iGluSnFR_testing-Adrian/
-subdirs=$(ls -d ../data/iGluSnFR_testing-Adrian/*)
+subdirs=$(find ../data/iGluSnFR_testing-Adrian/ -maxdepth 1 -mindepth 1 -type d | sort)
 
 # Loop through all combinations of motionAmp, brightness, and nsites
 for motionAmp in "${motionAmp_values[@]}"; do
@@ -94,6 +94,10 @@ for motionAmp in "${motionAmp_values[@]}"; do
           # Wait for any background process to complete
           wait -n
         done
+
+        # Add a small delay (e.g., 50 milliseconds) before submitting the next job
+        # to maintain the order in the paramters.csv file
+        sleep 0.05  # 50 ms delay
       done
     done
   done
