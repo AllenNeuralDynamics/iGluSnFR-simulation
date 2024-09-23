@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import random
 import re
 
 import cv2
@@ -237,7 +236,7 @@ def run(params, data_dir, output_path, seed=0):
         os.makedirs(output_path)
     print('Output directory created at', output_path)
 
-    for ds_factor in (8, 2, 1):
+    for ds_factor in (1, 2, 8):
         ds_str = f"DOWNSAMPLED-{ds_factor}x" if ds_factor > 1 else "RAW"
         fns = sorted([fn for fn in os.listdir(data_dir) if fn.endswith(f'REGISTERED_{ds_str}.tif') and 'DENOISED' not in fn])
         if fns:
@@ -265,13 +264,12 @@ def run(params, data_dir, output_path, seed=0):
 
             print(f'Loading {fn}...')
 
-            GT = {}  # Groundtruth dictionary
+            GT = {}  # Groundtruth dictionary           
 
             mov = tifffile.imread(os.path.join(data_dir, fn))
             IMavg = np.nanmean(mov, axis=0)
-            IMavg[np.isnan(IMavg)] = 0
             BG = np.percentile(IMavg[~np.isnan(IMavg)], 30)
-            IMavg = np.maximum(IMavg - BG, 0)
+            IMavg = np.maximum(np.nan_to_num(IMavg) - BG, 0)
             IMavg /= np.percentile(IMavg, 99)
             selR = np.arange((IMavg.shape[0] - params['IMsz'][0]) // 2, (IMavg.shape[0] + params['IMsz'][0]) // 2)
             selC = np.arange((IMavg.shape[1] - params['IMsz'][1]) // 2, (IMavg.shape[1] + params['IMsz'][1]) // 2)
@@ -284,11 +282,9 @@ def run(params, data_dir, output_path, seed=0):
             tmp[selR[-1] + 1:, :] = False
             tmp[:, :selC[0]] = False
             tmp[:, selC[-1] + 1:] = False
-            tmp = np.where(tmp)
-
-            # print("DEBUG:", list(zip(tmp[0], tmp[1])))
-
-            releaseSites = random.sample(list(zip(tmp[0], tmp[1])), params['nsites'])
+            tmp = np.transpose(np.where(tmp))
+            # print("DEBUG:", tmp)
+            releaseSites = tmp[np.random.choice(tmp.shape[0], params['nsites'], replace=False)]
             rr, cc = zip(*releaseSites)
             dr = np.random.rand(len(rr)) - 0.5
             dc = np.random.rand(len(cc)) - 0.5
@@ -339,14 +335,12 @@ def run(params, data_dir, output_path, seed=0):
                     sFilt = np.multiply(S, shift(skernel, [dr[siteN], dc[siteN]]))
 
                     # Multiply sFilt by activity and reshape
-                    sFilt = sFilt[:, :, None]  # Add an extra dimension
-                    temp = np.multiply(sFilt, activity[siteN, :].reshape(1, 1, -1))
+                    temp = np.multiply(sFilt[:, :, None], activity[siteN, :].reshape(1, 1, -1))
 
                     # Add temp to corresponding subarray in movie
                     movie[rr[siteN]-sw:rr[siteN]+sw+1, cc[siteN]-sw:cc[siteN]+sw+1, :] += temp
 
                     # Store sFilt in idealFilts
-                    sFilt = np.squeeze(sFilt)  # Remove extra dimension
                     idealFilts[rr[siteN]-sw:rr[siteN]+sw+1, cc[siteN]-sw:cc[siteN]+sw+1, siteN] = sFilt
 
                 # Simulate motion and noise

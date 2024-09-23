@@ -84,11 +84,11 @@ for motionAmp in "${motionAmp_values[@]}"; do
     for nsites in "${nsites_values[@]}"; do
       for subdir in $subdirs; do
         # Run the command for each subdirectory
-        run_command "$subdir" "$motionAmp" "$brightness" "$nsites" "$counter"
+        run_command "$subdir" "$motionAmp" "$brightness" "$nsites" "$counter" &
         
         # Increment the counter
         counter=$((counter + 1))
-        
+
         # Check the number of background processes
         while [ "$(jobs -r | wc -l)" -ge "$max_parallel" ]; do
           # Wait for any background process to complete
