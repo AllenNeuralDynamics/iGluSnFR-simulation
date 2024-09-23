@@ -2,44 +2,50 @@
 set -ex
 pwd
 ls ../data
-# python -u run_capsule.py --input ../data/scan_00003_20230815_162233_iGluSnFR/scan_00003_20230815_162233/ --output ../results/test/ --writetiff True
+# python -u run_capsule.py --input ../data/scan_00003_20230815_162233_iGluSnFR/scan_00003_20230815_162233/ --output ../results/test/ --writetiff
 
-# Define the ranges for motionAmp and brightness
-motionAmp_values=(12.5 25 50 100 200)
-brightness_values=(2 0.2 0.02 20 200)
+# Define the ranges for motionAmp, brightness, and nsites
+# motionAmp_values=(12.5 25 50 100 200)
+# brightness_values=(2 0.2 0.02 20 200)
+# nsites_values=(0 50)
+
+motionAmp_values=(0)
+brightness_values=(0.3)
+nsites_values=(50)
 
 # Base command
-base_command="python -u run_capsule.py --writetiff True"
+base_command="python -u run_capsule.py --writetiff"
 
 # Counter for test directories and SimDescription
 counter=1
 
 # Maximum number of parallel processes
-max_parallel=10
+max_parallel=$CO_CPUS
 
 # Output directory for results
 output_dir="../results/"
 
-# Create the output dßirectory if it doesn't exist
+# Create the output directory if it doesn't exist
 mkdir -p "$output_dir"
 
 # Initialize the CSV file
 csv_file="${output_dir}parameters.csv"
-echo "SimDescription,motionAmp,brightness" > "$csv_file"
+echo "SimDescription,motionAmp,brightness,nsites,scan" > "$csv_file"
 
 # Function to run a command and save parameters to CSV
 run_command() {
   local input_dir=$1
   local motionAmp=$2
   local brightness=$3
-  local counter=$4
+  local nsites=$4
+  local counter=$5
   local output_path="${output_dir}"
   
   # Create the output directory if it doesn't exist
   mkdir -p "$output_path"
   
   # Construct the full command
-  local full_command="$base_command --input $input_dir --output $output_path --motionAmp $motionAmp --brightness $brightness --SimDescription $counter --numTrials 10"
+  local full_command="$base_command -i $input_dir -o $output_path --motionAmp $motionAmp --brightness $brightness --nsites $nsites --SimDescription $counter --numTrials 1"
   
   # Retry logic
   local max_retries=5
@@ -66,26 +72,28 @@ run_command() {
   fi
   
   # Append the parameters to the CSV file
-  echo "$counter,$motionAmp,$brightness" >> "$csv_file"
+  echo "$counter,$motionAmp,$brightness,$nsites,$(basename $input_dir)" >> "$csv_file"
 }
 
 # Get all subdirectories under ../data/iGluSnFR_testing-Adrian/
-subdirs=$(find ../data/iGluSnFR_testing-Adrian/ -mindepth 1 -maxdepth 1 -type d)
+subdirs=$(ls -d ../data/iGluSnFR_testing-Adrian/*)
 
-# Loop through all combinations of motionAmp and brightness
+# Loop through all combinations of motionAmp, brightness, and nsites
 for motionAmp in "${motionAmp_values[@]}"; do
   for brightness in "${brightness_values[@]}"; do
-    for subdir in $subdirs; do
-      # Run the command for each subdirectory
-      run_command "$subdir" "$motionAmp" "$brightness" "$counter"
-      
-      # Increment the counter
-      counter=$((counter + 1))
-      
-      # Check the number of background processes
-      while [ "$(jobs -r | wc -l)" -ge "$max_parallel" ]; do
-        # Wait for any background process to complete
-        wait -n
+    for nsites in "${nsites_values[@]}"; do
+      for subdir in $subdirs; do
+        # Run the command for each subdirectory
+        run_command "$subdir" "$motionAmp" "$brightness" "$nsites" "$counter"
+        
+        # Increment the counter
+        counter=$((counter + 1))
+        
+        # Check the number of background processes
+        while [ "$(jobs -r | wc -l)" -ge "$max_parallel" ]; do
+          # Wait for any background process to complete
+          wait -n
+        done
       done
     done
   done
