@@ -10,8 +10,8 @@ ls ../data
 # nsites_values=(0 50)
 
 motionAmp_values=(0)
-brightness_values=(0.3)
-nsites_values=(50)
+brightness_values=(30 10 3 1 0.3 0.1 0.03)
+nsites_values=(0 10 50)
 
 # Base command
 base_command="python -u run_capsule.py --writetiff"
@@ -48,7 +48,7 @@ run_command() {
   mkdir -p "$output_path"
   
   # Construct the full command
-  local full_command="$base_command -i $input_dir -o $output_path --motionAmp $motionAmp --brightness $brightness --nsites $nsites --SimDescription $counter --numTrials 1"
+  local full_command="$base_command -i $input_dir -o $output_path --motionAmp $motionAmp --brightness $brightness --nsites $nsites --SimDescription $counter --numTrials 5"
   
   # Retry logic
   local max_retries=5

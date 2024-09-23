@@ -284,14 +284,17 @@ def run(params, data_dir, output_path, seed=0):
             tmp[:, selC[-1] + 1:] = False
             tmp = np.transpose(np.where(tmp))
             # print("DEBUG:", tmp)
-            releaseSites = tmp[np.random.choice(tmp.shape[0], params['nsites'], replace=False)]
-            rr, cc = zip(*releaseSites)
-            dr = np.random.rand(len(rr)) - 0.5
-            dc = np.random.rand(len(cc)) - 0.5
+            if params['nsites'] > 0:
+                releaseSites = tmp[np.random.choice(tmp.shape[0], params['nsites'], replace=False)]
+                rr, cc = zip(*releaseSites)
+                dr = np.random.rand(len(rr)) - 0.5
+                dc = np.random.rand(len(cc)) - 0.5
 
-            # Save Coordinates
-            GT['R'] = rr + dr - selR[0] + 1
-            GT['C'] = cc + dc - selC[0] + 1
+                # Save Coordinates
+                GT['R'] = rr + dr - selR[0] + 1
+                GT['C'] = cc + dc - selC[0] + 1
+            else:
+                GT['R'], GT['C'] = [], []
 
             # Simulate synapses
             for trialIx in tqdm(range(1, params['numTrials']+1), desc='Simulation Progress'):
@@ -299,35 +302,37 @@ def run(params, data_dir, output_path, seed=0):
 
                 B = params['brightness'] * np.exp(
                     -np.arange(params['T']) * params['frametime'] / params['bleachTau'])
+                
                 activity = np.zeros((params['nsites'], params['T']))
-                # Generate random data
-                random_data = np.random.rand(*activity.shape)
+                if params['nsites'] > 0:
+                    # Generate random data
+                    random_data = np.random.rand(*activity.shape)
 
-                # Apply threshold
-                thresholded_data = random_data < params['activityThresh']
+                    # Apply threshold
+                    thresholded_data = random_data < params['activityThresh']
 
-                # Smooth the data with a moving mean
-                smoothed_data = uniform_filter1d(thresholded_data.astype(float), size=40, axis=1)
+                    # Smooth the data with a moving mean
+                    smoothed_data = uniform_filter1d(thresholded_data.astype(float), size=40, axis=1)
 
-                # Generate spikes
-                spikes = np.random.rand(*activity.shape) < smoothed_data**2
+                    # Generate spikes
+                    spikes = np.random.rand(*activity.shape) < smoothed_data**2
 
-                activity[spikes] = np.minimum(
-                    params['maxspike'],
-                    np.maximum(
-                        params['minspike'],
-                        params['spikeAmp'] * np.random.randn(*activity[spikes].shape),
-                    ),
-                )
+                    activity[spikes] = np.minimum(
+                        params['maxspike'],
+                        np.maximum(
+                            params['minspike'],
+                            params['spikeAmp'] * np.random.randn(*activity[spikes].shape),
+                        ),
+                    )
 
-                activity = convolve(activity, kernel.reshape(1, -1), mode='same', method='direct')
+                    activity = convolve(activity, kernel.reshape(1, -1), mode='same', method='direct')
 
                 # Initialize movie and idealFilts
                 movie = np.tile(IMavg[:, :, None], (1, 1, params['T']))
                 idealFilts = np.zeros((*IMavg.shape, params['nsites']))
 
                 # Iterate over sites
-                for siteN in range(params['nsites']-1, -1, -1):
+                for siteN in range(params['nsites']):
                     # Extract subarray S
                     S = IMavg[rr[siteN]-sw:rr[siteN]+sw+1, cc[siteN]-sw:cc[siteN]+sw+1]
 
@@ -480,7 +485,8 @@ def run(params, data_dir, output_path, seed=0):
 
                 GT['ROIs'] = tt
 
-                IF = np.reshape(tt, (-1, params['nsites']))
+                if params['nsites']:
+                    IF = np.reshape(tt, (-1, params['nsites']))
 
                 # Save the raw data
 
