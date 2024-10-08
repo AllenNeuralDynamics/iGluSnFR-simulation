@@ -291,8 +291,8 @@ def run(params, data_dir, output_path, seed=0):
                 dc = np.random.rand(len(cc)) - 0.5
 
                 # Save Coordinates
-                GT['R'] = rr + dr - selR[0] + 1
-                GT['C'] = cc + dc - selC[0] + 1
+                GT['R'] = rr + dr - selR[0]  # + 1  Adjust index for Python's 0-based indexing
+                GT['C'] = cc + dc - selC[0]  # + 1  Adjust index for Python's 0-based indexing
             else:
                 GT['R'], GT['C'] = [], []
 
@@ -376,12 +376,12 @@ def run(params, data_dir, output_path, seed=0):
                 # The Ad array now contains the simulated data for this trial
                 sz = Ad.shape
 
-                selR_grid, selC_grid = np.meshgrid(selR, selC, indexing='ij')
                 T0 = np.pad(IMavg[selR_grid, selC_grid], params['maxshift'], mode='constant')
 
                 template = T0
 
                 GT['activity'] = activity
+                GT['ROIs'] = idealFilts[selR_grid, selC_grid]
 
                 initR = 0
                 initC = 0
@@ -393,8 +393,8 @@ def run(params, data_dir, output_path, seed=0):
 
                 # Create view matrices for interpolation
                 viewR, viewC = np.meshgrid(
-                    np.arange(0, sz[0] + 2 * params['maxshift']) - params['maxshift'],
-                    np.arange(0, sz[1] + 2 * params['maxshift']) - params['maxshift'],
+                    np.arange(-params['maxshift'], sz[0] + params['maxshift']),
+                    np.arange(-params['maxshift'], sz[1] + params['maxshift']),
                     indexing='ij'  # 'ij' for matrix indexing to match MATLAB's ndgrid
                 )
 
@@ -465,25 +465,17 @@ def run(params, data_dir, output_path, seed=0):
                 params['maxshiftR'] = int(np.ceil(np.max(np.abs(motionR))))
 
                 viewR, viewC = np.meshgrid(
-                    np.arange(0, sz[0] + 2 * params['maxshiftR']) - params['maxshiftR'],
-                    np.arange(0, sz[1] + 2 * params['maxshiftC']) - params['maxshiftC'],
+                    np.arange(sz[0] + 2 * params['maxshiftR']) - params['maxshiftR'],
+                    np.arange(sz[1] + 2 * params['maxshiftC']) - params['maxshiftC'],
                     indexing='ij'  # This makes meshgrid behave like MATLAB's ndgrid
                 )
-
-                # Create an open meshgrid using np.ix_
-                selR_ix, selC_ix = np.ix_(selR, selC)
-
-                # Select the slice of the array as done in MATLAB
-                selected_slice = idealFilts[selR_ix, selC_ix, :]
 
                 # Define the padding widths for each dimension
                 pad_widths = [(params['maxshiftR'], params['maxshiftR']),
                               (params['maxshiftC'], params['maxshiftC']), (0, 0)]
 
                 # Pad the array using np.pad
-                tt = np.pad(selected_slice, pad_widths, mode='constant', constant_values=0)
-
-                GT['ROIs'] = tt
+                tt = np.pad(GT['ROIs'], pad_widths, mode='constant', constant_values=0)
 
                 if params['nsites']:
                     IF = np.reshape(tt, (-1, params['nsites']))
@@ -491,7 +483,6 @@ def run(params, data_dir, output_path, seed=0):
                 # Save the raw data
 
                 # Create the output directory path by joining the output_path with the simulation directories
-                # output_directory = os.path.join(output_path, 'SIMULATIONS', params['SimDescription'])
                 output_directory = os.path.join(output_path, params['SimDescription'])
 
                 # Create the directory if it doesn't exist
