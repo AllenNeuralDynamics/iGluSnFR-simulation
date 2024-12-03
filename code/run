@@ -9,13 +9,13 @@ ls ../data
 # brightness_values=(2 0.2 0.02 20 200)
 # nsites_values=(0 50)
 
-# motionAmp_values=(0 12.5 25 50 100 200)
-# brightness_values=(30 10 3 1 0.3 0.1 0.03)
+# motionAmp_values=(0 12.5 50 200)
+# brightness_values=(30 3 0.3 0.03)
 # nsites_values=(0 10 50)
 
-motionAmp_values=(0 12.5 50 200)
-brightness_values=(30 3 0.3 0.03)
-nsites_values=(0 10 50)
+motionAmp_values=(0 25 50 100 200)
+brightness_values=(0.05 0.2 1 5 20)
+nsites_values=(10 30 50)
 
 # Base command
 base_command="python -u run_capsule.py --writetiff"
