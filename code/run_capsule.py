@@ -486,11 +486,7 @@ def run(params, data_dir, output_path, seed=0):
                     )
                     lam = np.maximum(lam, 0)  # Ensure lam is non-negative
                     Ad[:, :, 0, frameIx] = np.random.poisson(
-                        lam) * params["photonScale"]
-                    Ad[:, :, 0, frameIx] = (
-                        cv2.GaussianBlur(
-                            Ad[:, :, 0, frameIx], (3, 3), 0.5) * excessNoise
-                    )
+                        lam) * params["photonScale"] * excessNoise
 
                 # The Ad array now contains the simulated data for this trial
                 sz = Ad.shape
@@ -787,7 +783,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--brightness",
         type=float,
-        default=0.2,  # JF changed, was 2
+        default=0.4,  # JF changed, was 2
         help="Proportional factor that multiplies the sample brightness",
     )
     parser.add_argument(
@@ -801,7 +797,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--motionAmp",
         type=float,
-        default=50,
+        default=100,  # JF changed, was 50
         help="Factor that multiplies simulated sample movement",
     )
     parser.add_argument(
@@ -825,7 +821,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--photonScale",
         type=int,
-        default=600,  # JF changed, was 1000
+        default=1000,
         help="Amplitude of a single photon in digitizer units.",
     )  # Won't vary in practice
     parser.add_argument(
