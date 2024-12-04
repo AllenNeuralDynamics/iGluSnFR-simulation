@@ -455,10 +455,8 @@ def run(params, data_dir, output_path, seed=0):
                 psi = np.pi * np.random.rand(1)
                 A1 = 1
                 A2 = 0.25
-                GT["motionR"] = A1 * \
-                    (np.cos(psi) * motionPC1 + np.sin(psi) * motionPC2)
-                GT["motionC"] = A2 * \
-                    (-np.sin(psi) * motionPC1 + np.cos(psi) * motionPC2)
+                GT["motionR"] = A1 * (np.cos(psi) * motionPC1 + np.sin(psi) * motionPC2)
+                GT["motionC"] = A2 * (-np.sin(psi) * motionPC1 + np.cos(psi) * motionPC2)
 
                 Ad = np.zeros(
                     (len(selR), len(selC), params["numChannels"], params["T"]),
@@ -480,10 +478,7 @@ def run(params, data_dir, output_path, seed=0):
                         borderMode=cv2.BORDER_CONSTANT,
                         flags=cv2.INTER_CUBIC,
                     )
-                    lam = np.add(
-                        np.multiply(tmp[selR_grid, selC_grid], B[frameIx]),
-                        params["darkrate"],
-                    )
+                    lam = tmp[selR_grid, selC_grid] * B[frameIx] + params["darkrate"]
                     lam = np.maximum(lam, 0)  # Ensure lam is non-negative
                     Ad[:, :, 0, frameIx] = np.random.poisson(
                         lam) * params["photonScale"] * excessNoise
@@ -783,7 +778,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--brightness",
         type=float,
-        default=0.4,  # JF changed, was 2
+        default=0.2,  # JF changed, was 2
         help="Proportional factor that multiplies the sample brightness",
     )
     parser.add_argument(
@@ -821,7 +816,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--photonScale",
         type=int,
-        default=1000,
+        default=600,  # JF changed, was 1000
         help="Amplitude of a single photon in digitizer units.",
     )  # Won't vary in practice
     parser.add_argument(
