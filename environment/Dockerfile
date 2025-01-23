@@ -1,4 +1,4 @@
-# hash:sha256:0dab7d71f46ef7e1737c8587ef3049c04b124b358127328af8aff4454888b5bf
+# hash:sha256:dd48a705dba2726c66c8980ae946df73bacd982559e614a13b3f36fccc368e0b
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:23.1.0-4-python3.10.12-ubuntu22.04
 
@@ -18,3 +18,18 @@ RUN pip install -U --no-cache-dir \
     scipy==1.13.0 \
     tifffile==2024.5.10 \
     tqdm==4.66.4
+
+ADD "https://github.com/coder/code-server/releases/download/v4.95.3/code-server-4.95.3-linux-amd64.tar.gz" /.code-server/code-server.tar.gz
+	
+RUN cd /.code-server \
+    && tar -xvf code-server.tar.gz \
+    && rm code-server.tar.gz \
+    && ln -s /.code-server/code-server-4.95.3-linux-amd64/bin/code-server  /usr/bin/code-server
+
+RUN mkdir -p /.vscode/extensions \
+    && code-server --extensions-dir="/.vscode/extensions" --install-extension REditorSupport.R \
+    && code-server --extensions-dir="/.vscode/extensions" --install-extension continue.continue \
+    && code-server --extensions-dir="/.vscode/extensions" --install-extension ms-python.python \
+    && code-server --extensions-dir="/.vscode/extensions" --install-extension ms-toolsai.jupyter \
+    && code-server --extensions-dir="/.vscode/extensions" --install-extension reageyao.bioSyntax \
+    && code-server --extensions-dir="/.vscode/extensions" --install-extension saoudrizwan.claude-dev

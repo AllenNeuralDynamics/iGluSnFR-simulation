@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import re
-
 import cv2
 import h5py
 import numpy as np
@@ -10,190 +9,10 @@ import numpy.ma as ma
 import tifffile
 from ScanImageTiffReader import ScanImageTiffReader
 from scipy.interpolate import PchipInterpolator, interp1d
-from scipy.ndimage import (gaussian_filter, median_filter, shift,
-                           uniform_filter1d)
+from scipy.ndimage import gaussian_filter, median_filter, shift, uniform_filter1d
 from scipy.signal import convolve
 from sklearn.linear_model import HuberRegressor
 from tqdm import tqdm
-
-
-def dftregistration_clipped(buf1ft, buf2ft, usfac=1, clip=None):
-    if clip is None:
-        clip = [0, 0]
-    elif isinstance(clip, (int, float)):
-        clip = [clip, clip]
-
-    # Compute error for no pixel shift
-    if usfac == 0:
-        CCmax = np.sum(buf1ft * np.conj(buf2ft))
-        rfzero = np.sum(np.abs(buf1ft.flatten()) ** 2)
-        rgzero = np.sum(np.abs(buf2ft.flatten()) ** 2)
-        error = 1.0 - CCmax * np.conj(CCmax) / (rgzero * rfzero)
-        error = np.sqrt(np.abs(error))
-        diffphase = np.arctan2(np.imag(CCmax), np.real(CCmax))
-        output = [error, diffphase]
-        return output, None
-
-    # Whole-pixel shift - Compute crosscorrelation by an IFFT and locate the peak
-    elif usfac == 1:
-        m, n = buf1ft.shape
-        md2 = m // 2
-        nd2 = n // 2
-        CC = np.fft.ifft2(buf1ft * np.conj(buf2ft))
-
-        keep = np.ones(CC.shape, dtype=bool)
-        keep[clip[0] // 2 + 1: -clip[0] // 2, :] = False
-        keep[:, clip[1] // 2 + 1: -clip[1] // 2] = False
-        CC[~keep] = 0
-
-        rloc, cloc = np.unravel_index(np.argmax(np.real(CC)), CC.shape)
-        CCmax = CC[rloc, cloc]
-        rfzero = np.sum(np.abs(buf1ft.flatten()) ** 2) / (m * n)
-        rgzero = np.sum(np.abs(buf2ft.flatten()) ** 2) / (m * n)
-        error = 1.0 - CCmax * np.conj(CCmax) / (rgzero * rfzero)
-        error = np.sqrt(np.abs(error))
-        diffphase = np.arctan2(np.imag(CCmax), np.real(CCmax))
-
-        md2 = m // 2
-        nd2 = n // 2
-        if rloc > md2:
-            row_shift = rloc - m
-        else:
-            row_shift = rloc
-
-        if cloc > nd2:
-            col_shift = cloc - n
-        else:
-            col_shift = cloc
-
-        output = [error, diffphase, row_shift, col_shift]
-        return output, None
-
-    # Partial-pixel shift
-    else:
-        # First upsample by a factor of 2 to obtain initial estimate
-        # Embed Fourier data in a 2x larger array
-        m, n = buf1ft.shape
-        mlarge = m * 2
-        nlarge = n * 2
-        CC = np.zeros((mlarge, nlarge), dtype=np.complex128)
-        CC[
-            m - (m // 2): m + (m // 2) + 1,
-            n - (n // 2): n + (n // 2) + 1,
-        ] = np.fft.fftshift(
-            buf1ft
-        ) * np.conj(np.fft.fftshift(buf2ft))
-
-        # Compute crosscorrelation and locate the peak
-        CC = np.fft.ifft2(np.fft.ifftshift(CC))  # Calculate cross-correlation
-
-        keep = np.ones(CC.shape, dtype=bool)
-        keep[2 * clip[0] + 1: -2 * clip[0], :] = False
-        keep[:, 2 * clip[1] + 1: -2 * clip[1]] = False
-        CC[~keep] = 0
-        rloc, cloc = np.unravel_index(np.argmax(np.real(CC)), CC.shape)
-        CCmax = CC[rloc, cloc]
-
-        # Obtain shift in original pixel grid from the position of the
-        # crosscorrelation peak
-        m, n = CC.shape
-        md2 = m // 2
-        nd2 = n // 2
-        if rloc > md2:
-            row_shift = rloc - m
-        else:
-            row_shift = rloc
-        if cloc > nd2:
-            col_shift = cloc - n
-        else:
-            col_shift = cloc
-        row_shift = row_shift / 2
-        col_shift = col_shift / 2
-
-        # If upsampling > 2, then refine estimate with matrix multiply DFT
-        if usfac > 2:
-            # Initial shift estimate in upsampled grid
-            row_shift = round(row_shift * usfac) / usfac
-            col_shift = round(col_shift * usfac) / usfac
-            # Center of output array at dftshift+1
-            dftshift = np.fix(np.ceil(usfac * 1.5) / 2)
-            # Matrix multiply DFT around the current shift estimate
-            CC = np.conj(
-                dftups(
-                    buf2ft * np.conj(buf1ft),
-                    np.ceil(usfac * 1.5),
-                    np.ceil(usfac * 1.5),
-                    usfac,
-                    dftshift - row_shift * usfac,
-                    dftshift - col_shift * usfac,
-                )
-            ) / (md2 * nd2 * usfac**2)
-            # Locate maximum and map back to original pixel grid
-            rloc, cloc = np.unravel_index(np.argmax(np.real(CC)), CC.shape)
-            CCmax = CC[rloc, cloc]
-            rg00 = dftups(buf1ft * np.conj(buf1ft), 1, 1,
-                          usfac) / (md2 * nd2 * usfac**2)
-            rf00 = dftups(buf2ft * np.conj(buf2ft), 1, 1,
-                          usfac) / (md2 * nd2 * usfac**2)
-            rloc = rloc - dftshift
-            cloc = cloc - dftshift
-            row_shift = row_shift + rloc / usfac
-            col_shift = col_shift + cloc / usfac
-
-        # If upsampling = 2, no additional pixel shift refinement
-        else:
-            rg00 = np.sum(buf1ft * np.conj(buf1ft)) / m / n
-            rf00 = np.sum(buf2ft * np.conj(buf2ft)) / m / n
-        error = 1.0 - CCmax * np.conj(CCmax) / (rg00 * rf00)
-        error = np.sqrt(np.abs(error))
-        diffphase = np.arctan2(np.imag(CCmax), np.real(CCmax))
-        # If its only one row or column the shift along that dimension has no
-        # effect. We set to zero.
-        if md2 == 1:
-            row_shift = 0
-        if nd2 == 1:
-            col_shift = 0
-        output = [error, diffphase, row_shift, col_shift]
-
-    # Compute registered version of buf2ft
-    if usfac > 0:
-        nr, nc = buf2ft.shape
-        Nr = np.fft.ifftshift(np.arange(-np.fix(nr / 2), np.ceil(nr / 2)))
-        Nc = np.fft.ifftshift(np.arange(-np.fix(nc / 2), np.ceil(nc / 2)))
-        Nc, Nr = np.meshgrid(Nc, Nr)
-        Greg = buf2ft * np.exp(1j * 2 * np.pi *
-                               (-row_shift * Nr / nr - col_shift * Nc / nc))
-        Greg = Greg * np.exp(1j * diffphase)
-    elif usfac == 0:
-        Greg = buf2ft * np.exp(1j * diffphase)
-    else:
-        Greg = None
-
-    return output, Greg
-
-
-def dftups(inp, nor, noc, usfac, roff=0, coff=0):
-    nr, nc = inp.shape
-    # Compute kernels and obtain DFT by matrix products
-    kernc = np.exp(
-        (-1j * 2 * np.pi / (nc * usfac))
-        * (np.fft.ifftshift(np.arange(nc)).reshape(-1, 1) - np.floor(nc / 2))
-        * (np.arange(noc) - coff)
-    )
-    kernr = np.exp(
-        (-1j * 2 * np.pi / (nr * usfac))
-        * (np.arange(nor).reshape(-1, 1) - roff)
-        * (np.fft.ifftshift(np.arange(nr)) - np.floor(nr / 2))
-    )
-    out = np.dot(np.dot(kernr, inp), kernc)
-    return out
-
-
-def downsampleTime(Y, ds_time):
-    for _ in range(ds_time):
-        Y = Y[:, :, :, : 2 * (Y.shape[3] // 2): 2] + \
-            Y[:, :, :, 1: 2 * (Y.shape[3] // 2): 2]
-    return Y
 
 
 def extract_pixel_resolution(metadata_str, default_resolution):
@@ -217,22 +36,6 @@ def extract_pixel_resolution(metadata_str, default_resolution):
     return pixel_resolution
 
 
-def get_excess_noise(m, selR, selC):
-    m = m[:, selR[0]: selR[-1] + 1, selC[0]: selC[-1] + 1]
-    mean = np.nanmean(m, 0)
-    var = np.nanvar(m, 0)
-    nans = np.isnan(var.ravel())
-    nanmean = mean.ravel()[~nans]
-    nanvar = var.ravel()[~nans]
-    huber = HuberRegressor().fit(nanmean[:, None], nanvar)
-    offset = -huber.intercept_ / huber.coef_[0]
-    # avoid division by "~0" in next line
-    excess_noise = var / \
-        np.maximum(mean - offset, 1e-6 * (nanmean.max() - nanmean.min()))
-    excess_noise /= excess_noise.mean()
-    return excess_noise
-
-
 def run(params, data_dir, output_path, seed=0):
     np.random.seed(seed)
 
@@ -248,7 +51,8 @@ def run(params, data_dir, output_path, seed=0):
             [
                 fn
                 for fn in os.listdir(data_dir)
-                if fn.endswith(f"REGISTERED_{ds_str}.tif") and "DENOISED" not in fn
+                # if fn.endswith(f"REGISTERED_{ds_str}.tif") and "DENOISED" not in fn # Before the use of Z stacks
+                if fn.endswith("_Ch2.ome.tif") and "DENOISED" not in fn
             ]
         )
         if fns:
@@ -257,9 +61,11 @@ def run(params, data_dir, output_path, seed=0):
     # Intialize kernel
     kernel = np.exp(-np.arange(0, 8, params["frametime"] / params["tau"]))
     sw = np.ceil(3 * params["sigma"]).astype(int)
-    skernel = np.zeros((2 * sw + 1, 2 * sw + 1))
-    skernel[sw, sw] = 1
-    skernel = gaussian_filter(skernel, params["sigma"])
+    skernel = np.zeros((2 * sw + 1, 2 * sw + 1, sw + 1))
+    skernel[sw, sw, int(sw / 2)] = 1
+    skernel = gaussian_filter(
+        skernel, [params["sigma"], params["sigma"], params["sigma"] / 2]
+    )
     skernel *= (skernel >= skernel[sw].min()) / np.max(skernel)
 
     if not fns:
@@ -272,57 +78,73 @@ def run(params, data_dir, output_path, seed=0):
             if "REGISTERED" not in fn:
                 print(f"Loading {fn}...")
                 metadata_str = ScanImageTiffReader(
-                    os.path.join(data_dir, fn)).metadata()
-                params["IMsz"] = extract_pixel_resolution(
-                    metadata_str, [125, 45])[::-1]
+                    os.path.join(data_dir, fn)
+                ).metadata()
+                params["IMsz"] = extract_pixel_resolution(metadata_str, [125, 45])[::-1]
 
             print(f"Loading {fn}...")
 
             GT = {}  # Groundtruth dictionary
-
-            mov = tifffile.imread(os.path.join(data_dir, fn))
-            IMavg = np.nanmean(mov, axis=0)
-            BG = np.percentile(IMavg[~np.isnan(IMavg)], 30)
-            IMavg = np.maximum(np.nan_to_num(IMavg) - BG, 0)
-            IMavg /= np.percentile(IMavg, 99)
+            print("[DEBUG] os.path.join(data_dir, fn):", os.path.join(data_dir, fn))
+            mov = tifffile.imread(
+                os.path.join(data_dir, fn)
+            )  # TOOD: Read the Z stack. No longer a XYT rather XYZ.
+            IMVol_Avg = mov[
+                5:-5, :, :
+            ]  # IMVol_Avg take mov which is 3d average accross time from ZXYT.
+            BG = np.percentile(IMVol_Avg[~np.isnan(IMVol_Avg)], 30)
+            IMVol_Avg = np.maximum(np.nan_to_num(IMVol_Avg) - BG, 0)
+            IMVol_Avg /= np.percentile(IMVol_Avg, 99)
             selR = np.arange(
-                (IMavg.shape[0] - params["IMsz"][0]) // 2,
-                (IMavg.shape[0] + params["IMsz"][0]) // 2,
+                (IMVol_Avg.shape[1] - params["IMsz"][0]) // 2,
+                (IMVol_Avg.shape[1] + params["IMsz"][0]) // 2,
             )
             selC = np.arange(
-                (IMavg.shape[1] - params["IMsz"][1]) // 2,
-                (IMavg.shape[1] + params["IMsz"][1]) // 2,
+                (IMVol_Avg.shape[2] - params["IMsz"][1]) // 2,
+                (IMVol_Avg.shape[2] + params["IMsz"][1]) // 2,
             )
+            selZ = np.arange(
+                3, IMVol_Avg.shape[0] - 3
+            )  # selZ select middle 5 frames. Remove top 5 and bottom 5 frames.
 
-            tmp = median_filter(IMavg, size=(3, 3))
+            tmp = median_filter(
+                IMVol_Avg, size=(3, 3, 2)
+            )  # Change IMavg to IMVol_Avg size with  size=(3, 3, 1) or size=(3, 3, 2) Not sure if filtering in Z would help.
             tmp = tmp > min(np.percentile(tmp, 97), 4 * np.mean(tmp))
 
             # Set certain regions to False
             mD = max(int(params["minDistance"]), 0)
-            tmp[: selR[0] + mD, :] = False
-            tmp[selR[-1] + 1 - mD:, :] = False
-            tmp[:, : selC[0] + mD] = False
-            tmp[:, selC[-1] + 1 - mD:] = False
+
+            # Set slices for the depth (selZ)
+            tmp[: selZ[0] + mD, :, :] = False
+            tmp[selZ[-1] + 1 - mD :, :, :] = False
+
+            # Set slices for the rows (selR)
+            tmp[:, : selR[0] + mD, :] = False
+            tmp[:, selR[-1] + 1 - mD :, :] = False
+
+            # Set slices for the columns (selC)
+            tmp[:, :, : selC[0] + mD] = False
+            tmp[:, :, selC[-1] + 1 - mD :] = False
+
             tmp = np.transpose(np.where(tmp))
-            # print("DEBUG:", tmp)
+
             if params["nsites"] > 0:
                 if params["minDistance"] <= 0:
                     releaseSites = tmp[
-                        np.random.choice(
-                            tmp.shape[0], params["nsites"], replace=False)
+                        np.random.choice(tmp.shape[0], params["nsites"], replace=False)
                     ]
-                    rr, cc = zip(*releaseSites)
-                    dr, dc = np.random.rand(2, len(rr)) - 0.5
+                    zz, rr, cc = np.unravel_index(releaseSites, mov.shape)
+                    zz, dr, dc = np.random.rand(3, len(rr)) - 0.5
                 else:
-                    releaseSites = np.empty((params["nsites"], 2))
+                    releaseSites = np.empty((params["nsites"], 3))
                     for j in range(params["nsites"]):
                         trial = 0
                         while True:
                             i = np.random.choice(len(tmp))
-                            candidate = tmp[i] + np.random.rand(2) - 0.5
+                            candidate = tmp[i] + np.random.rand(3) - 0.5
                             if j == 0 or np.all(
-                                np.linalg.norm(
-                                    releaseSites[:j] - candidate, axis=1)
+                                np.linalg.norm(releaseSites[:j] - candidate, axis=1)
                                 >= params["minDistance"]
                             ):
                                 releaseSites[j] = candidate
@@ -334,24 +156,29 @@ def run(params, data_dir, output_path, seed=0):
                                     f"Failed to place site {j+1}/{params['nsites']} at a minimum "
                                     f"distance of {params['minDistance']} within 10000 trials."
                                 )
-                    rr, cc = np.round(releaseSites.T).astype(int)
-                    dr, dc = releaseSites.T - np.array([rr, cc])
+                    zz, rr, cc = zip(*releaseSites)
+                    dz, dr, dc = releaseSites.T - np.array([zz, rr, cc])
                 # Save Coordinates
                 # + 1  Adjust index for Python's 0-based indexing
                 GT["R"] = rr + dr - selR[0]
                 # + 1  Adjust index for Python's 0-based indexing
                 GT["C"] = cc + dc - selC[0]
 
+                GT["Z"] = zz + dz - selZ[0]
+
             else:
-                GT["R"], GT["C"] = [], []
+                GT["R"], GT["C"], GT["Z"] = [], [], []
 
             # Simulate synapses
-            for trialIx in tqdm(range(1, params["numTrials"] + 1), desc="Simulation Progress"):
-                fnstem = f'SIMULATION_{fn[:11]}{params["SimDescription"]}_Trial{trialIx}'
+            for trialIx in tqdm(
+                range(1, params["numTrials"] + 1), desc="Simulation Progress"
+            ):
+                fnstem = (
+                    f'SIMULATION_{fn[:11]}{params["SimDescription"]}_Trial{trialIx}'
+                )
 
                 B = params["brightness"] * np.exp(
-                    -np.arange(params["T"]) *
-                    params["frametime"] / params["bleachTau"]
+                    -np.arange(params["T"]) * params["frametime"] / params["bleachTau"]
                 )
 
                 activity = np.zeros((params["nsites"], params["T"]))
@@ -374,8 +201,8 @@ def run(params, data_dir, output_path, seed=0):
                         params["maxspike"],
                         np.maximum(
                             params["minspike"],
-                            params["spikeAmp"] *
-                            np.random.randn(*activity[spikes].shape),
+                            params["spikeAmp"]
+                            * np.random.randn(*activity[spikes].shape),
                         ),
                     )
 
@@ -384,42 +211,74 @@ def run(params, data_dir, output_path, seed=0):
                     )
 
                 # Initialize movie and idealFilts
-                movie = np.tile(IMavg[:, :, None], (1, 1, params["T"]))
-                idealFilts = np.zeros((*IMavg.shape, params["nsites"]))
-
+                movie = np.tile(
+                    IMVol_Avg[:, :, :, None], (1, 1, 1, params["T"])
+                )  # TODO: Ask MX if using 11 Z stacks is enough for movie?
+                idealFilts = np.zeros((*IMVol_Avg.shape, params["nsites"]))
                 # Iterate over sites
                 for siteN in range(params["nsites"]):
                     # Extract subarray S
-                    S = IMavg[
-                        rr[siteN] - sw: rr[siteN] + sw + 1,
-                        cc[siteN] - sw: cc[siteN] + sw + 1,
-                    ]
+                    S = IMVol_Avg[
+                        np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0) : int(
+                            zz[siteN]
+                        )
+                        + int(np.ceil(sw / 2))
+                        + 1,
+                        np.maximum((int(rr[siteN]) - sw), 0) : int(rr[siteN]) + sw + 1,
+                        np.maximum((int(cc[siteN]) - sw), 0) : int(cc[siteN]) + sw + 1,
+                    ]  # [Warning] Might use memory when zz is introduced.
+
+                    shiftedKernel = shift(skernel.T, [dz[siteN], dr[siteN], dc[siteN]])
+                    zIdxs = np.arange(
+                        int(zz[siteN]) - int(np.ceil(sw / 2)),
+                        int(zz[siteN]) + int(np.ceil(sw / 2)) + 1,
+                    )
+                    rIdxs = np.arange(int(rr[siteN]) - sw, int(rr[siteN]) + sw + 1)
+                    cIdxs = np.arange(int(cc[siteN]) - sw, int(cc[siteN]) + sw + 1)
+
+                    z_valid = (zIdxs >= 0) & (zIdxs < IMVol_Avg.shape[0])
+                    r_valid = (rIdxs >= 0) & (rIdxs < IMVol_Avg.shape[1])
+                    c_valid = (cIdxs >= 0) & (cIdxs < IMVol_Avg.shape[2])
+
+                    # Apply valid_mask to shiftedKernel and S
+                    filtered_kernel = shiftedKernel[z_valid][:, r_valid][:, :, c_valid]
 
                     # Apply translation to skernel and multiply by S
-                    sFilt = np.multiply(
-                        S, shift(skernel, [dr[siteN], dc[siteN]]))
+                    sFilt = np.multiply(S, filtered_kernel)
 
                     # Multiply sFilt by activity and reshape
                     temp = np.multiply(
-                        sFilt[:, :, None], activity[siteN, :].reshape(1, 1, -1))
+                        sFilt[:, :, :, None], activity[siteN, :].reshape(1, 1, 1, -1)
+                    )
 
                     # Add temp to corresponding subarray in movie
                     movie[
-                        rr[siteN] - sw: rr[siteN] + sw + 1,
-                        cc[siteN] - sw: cc[siteN] + sw + 1,
+                        np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0) : int(
+                            zz[siteN]
+                        )
+                        + int(np.ceil(sw / 2))
+                        + 1,
+                        np.maximum((int(rr[siteN]) - sw), 0) : int(rr[siteN]) + sw + 1,
+                        np.maximum((int(cc[siteN]) - sw), 0) : int(cc[siteN]) + sw + 1,
                         :,
                     ] += temp
 
                     # Store sFilt in idealFilts
                     idealFilts[
-                        rr[siteN] - sw: rr[siteN] + sw + 1,
-                        cc[siteN] - sw: cc[siteN] + sw + 1,
+                        np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0) : int(
+                            zz[siteN]
+                        )
+                        + int(np.ceil(sw / 2))
+                        + 1,
+                        np.maximum((int(rr[siteN]) - sw), 0) : int(rr[siteN]) + sw + 1,
+                        np.maximum((int(cc[siteN]) - sw), 0) : int(cc[siteN]) + sw + 1,
                         siteN,
                     ] = sFilt
 
                 # Simulate motion and noise
                 envelope = np.square(
-                    np.sin(np.cumsum(np.random.randn(params["T"]) / 20)))
+                    np.sin(np.cumsum(np.random.randn(params["T"]) / 20))
+                )
                 motionPC1 = np.convolve(
                     np.multiply(
                         envelope,
@@ -452,196 +311,146 @@ def run(params, data_dir, output_path, seed=0):
                     np.ones(5) / 5,
                     mode="same",
                 )
+                motionPC3 = np.convolve(
+                    np.multiply(
+                        envelope,
+                        np.sin(
+                            np.convolve(
+                                np.random.randn(params["T"]) ** 3,
+                                np.ones(40) / 40,
+                                mode="same",
+                            )
+                            / 10
+                        ),
+                    )
+                    * params["motionAmp"],
+                    np.ones(5) / 5,
+                    mode="same",
+                )
+
                 psi = np.pi * np.random.rand(1)
+                psi = psi[0]
+                theta = np.pi * np.random.rand(1)
+                theta = theta[0]
+                phi = np.pi * np.random.rand(1)
+                phi = phi[0]
+
+                R = (
+                    np.array(
+                        [
+                            [np.cos(psi), -np.sin(psi), 0],
+                            [np.sin(psi), np.cos(psi), 0],
+                            [0, 0, 1],
+                        ]
+                    )
+                    @ np.array(
+                        [
+                            [np.cos(theta), 0, np.sin(theta)],
+                            [0, 1, 0],
+                            [-np.sin(theta), 0, np.cos(theta)],
+                        ]
+                    )
+                    @ np.array(
+                        [
+                            [1, 0, 0],
+                            [0, np.cos(phi), -np.sin(phi)],
+                            [0, np.sin(phi), np.cos(phi)],
+                        ]
+                    )
+                )
+
+                motion = R @ np.array([motionPC1, motionPC2, motionPC3])
+
                 A1 = 1
                 A2 = 0.25
-                GT["motionR"] = A1 * (np.cos(psi) * motionPC1 + np.sin(psi) * motionPC2)
-                GT["motionC"] = A2 * (-np.sin(psi) * motionPC1 + np.cos(psi) * motionPC2)
+                A3 = 0.15  # TODO: May need to fine tune for Z motion
+
+                GT["motionR"] = A1 * motion[0]
+                GT["motionC"] = A2 * motion[1]
+                GT["motionZ"] = A3 * motion[2]
 
                 Ad = np.zeros(
                     (len(selR), len(selC), params["numChannels"], params["T"]),
                     dtype=np.float32,
                 )
                 selR_grid, selC_grid = np.meshgrid(selR, selC, indexing="ij")
-                rows, cols = movie.shape[:2]
+                selZ_grid, _, _ = np.meshgrid(selZ, selR, selC, indexing="ij")
+                zs, rows, cols = movie.shape[:3]
+                excessNoise_file_path = "../code/utils/excess_noise_est.npy"
+
+                if os.path.exists(excessNoise_file_path):
+                    excessNoise = np.load(excessNoise_file_path)
+                else:
+                    print(f"excessNoise File not found: {excessNoise_file_path}")
+
                 excessNoise = np.clip(
-                    get_excess_noise(mov, selR, selC), 0.5, 2)
+                    excessNoise, 0.5, 2
+                )  # Hardcoded for now. MX will ask JF about this!
+
                 for frameIx in range(params["T"]):
+                    # Create the 2x3 transformation matrix for this frame
                     M = np.float32(
-                        [[1, 0, GT["motionC"][frameIx]], [
-                            0, 1, GT["motionR"][frameIx]]]
+                        [
+                            [
+                                1,
+                                0,
+                                GT["motionC"][frameIx],
+                            ],  # Translation in columns (x-axis)
+                            [0, 1, GT["motionR"][frameIx]],
+                        ]  # Translation in rows (y-axis)
                     )
-                    tmp = cv2.warpAffine(
-                        movie[:, :, frameIx],
-                        M,
-                        (cols, rows),
-                        borderMode=cv2.BORDER_CONSTANT,
-                        flags=cv2.INTER_CUBIC,
-                    )
-                    lam = tmp[selR_grid, selC_grid] * B[frameIx] + params["darkrate"]
+
+                    # Initialize a temporary array to store the transformed 3D volume for this frame
+                    tmp_transformed = np.zeros_like(movie[:, :, :, frameIx])
+
+                    # Iterate over each depth slice in the 3D volume
+                    for depthIx in range(movie.shape[0]):
+                        # Apply the transformation to each 2D slice
+                        tmp_transformed[depthIx, :, :] = cv2.warpAffine(
+                            movie[
+                                depthIx, :, :, frameIx
+                            ],  # 2D slice at depthIx and frameIx
+                            M,
+                            (cols, rows),  # Output size (width, height)
+                            borderMode=cv2.BORDER_CONSTANT,
+                            flags=cv2.INTER_CUBIC,
+                        )
+                    # Extract the motion value for the current frame
+                    z = GT["motionZ"][frameIx]
+
+                    # Calculate middle index of the volume
+                    middle_frame = tmp_transformed.shape[0] // 2
+
+                    # Determine the base frame index and interpolation weight
+                    base_frame = middle_frame + int(np.floor(z))
+                    alpha = z - np.floor(z)  # Fractional part for linear interpolation
+
+                    # Extract the neighboring frames for z plane
+                    frame_below = tmp_transformed[base_frame, selR_grid, selC_grid]
+                    frame_above = tmp_transformed[base_frame + 1, selR_grid, selC_grid]
+
+                    # Perform linear interpolation between frames
+                    interpolated_z = (1 - alpha) * frame_below + alpha * frame_above
+
+                    # Apply brightness scaling and add dark current
+                    lam = interpolated_z * B[frameIx] + params["darkrate"]
                     lam = np.maximum(lam, 0)  # Ensure lam is non-negative
-                    Ad[:, :, 0, frameIx] = np.random.poisson(
-                        lam) * params["photonScale"] * excessNoise
+
+                    # Simulate Poisson noise and scale by photonScale and excessNoise
+                    Ad[:, :, 0, frameIx] = (
+                        np.random.poisson(lam)
+                        * params["photonScale"]
+                        * excessNoise[: params["IMsz"][0], : params["IMsz"][1]]
+                    )
 
                 # The Ad array now contains the simulated data for this trial
                 sz = Ad.shape
 
-                T0 = np.pad(IMavg[selR_grid, selC_grid],
-                            params["maxshift"], mode="constant")
-
-                template = T0
-
                 GT["activity"] = activity
-                GT["ROIs"] = idealFilts[selR_grid, selC_grid]
-
-                initR = 0
-                initC = 0
-                # number of downsampled frames
-                nDSframes = sz[3] // params["dsFac"]
-                motionDSr = np.full(nDSframes, np.nan)
-                motionDSc = np.full(nDSframes, np.nan)
-                aErrorDS = np.full(nDSframes, np.nan)
-                aRankCorr = np.full(nDSframes, np.nan)
-
-                # Create view matrices for interpolation
-                viewR, viewC = np.meshgrid(
-                    np.arange(-params["maxshift"], sz[0] + params["maxshift"]),
-                    np.arange(-params["maxshift"], sz[1] + params["maxshift"]),
-                    indexing="ij",  # 'ij' for matrix indexing to match MATLAB's ndgrid
-                )
-
-                for DSframe in range(nDSframes):
-                    readFrames = range(
-                        DSframe * params["dsFac"], (DSframe + 1) * params["dsFac"])
-                    M = downsampleTime(
-                        Ad[:, :, :, readFrames], params["ds_time"]).sum(axis=2)
-                    M = np.squeeze(np.sum(M, axis=2))
-                    if DSframe % 1000 == 0:
-                        print(f"{DSframe} of {nDSframes}")
-
-                    Ttmp = np.nanmean(np.stack([T0, template]), axis=0)
-                    T1 = Ttmp[
-                        params["maxshift"] - initR: params["maxshift"] - initR + sz[0],
-                        params["maxshift"] - initC: params["maxshift"] - initC + sz[1],
-                    ]
-
-                    # output = dftregistration(fft2(M), fft2(T1), 4)
-                    output, _ = dftregistration_clipped(
-                        np.fft.fft2(M),
-                        np.fft.fft2(T1.astype(np.float32)),
-                        4,
-                        params["clipShift"],
-                    )
-
-                    motionDSr[DSframe] = initR + output[2]
-                    motionDSc[DSframe] = initC + output[3]
-                    aErrorDS[DSframe] = output[0].item()
-
-                    if (
-                        abs(motionDSr[DSframe]) < params["maxshift"]
-                        and abs(motionDSc[DSframe]) < params["maxshift"]
-                    ):
-                        # Create grid points
-                        X, Y = np.meshgrid(
-                            np.arange(0, sz[1]), np.arange(0, sz[0]))
-
-                        # Calculate new grid points
-                        Xq = (
-                            viewC + motionDSc[DSframe]
-                        )  # Adjust index for Python's 0-based indexing
-                        Yq = (
-                            viewR + motionDSr[DSframe]
-                        )  # Adjust index for Python's 0-based indexing
-
-                        # Perform interpolation using fast cv2.remap instead of slow griddata
-                        # A = scipy.interpolate.griddata(
-                        #     (X.flatten(), Y.flatten()),
-                        #     M.flatten(),
-                        #     (Xq, Yq),
-                        #     method="linear",
-                        #     fill_value=np.nan,
-                        # )
-                        A = cv2.remap(
-                            M,
-                            Xq.astype(np.float32),
-                            Yq.astype(np.float32),
-                            cv2.INTER_LINEAR,
-                            borderMode=cv2.BORDER_CONSTANT,
-                            borderValue=np.nan,
-                        )
-
-                        sel = ~np.isnan(A)
-
-                        selCorr = ~np.isnan(A) & ~np.isnan(template)
-                        A_ma = ma.array(A, mask=~selCorr)
-                        template_ma = ma.array(template, mask=~selCorr)
-
-                        aRankCorr[DSframe] = ma.corrcoef(
-                            ma.array(
-                                [A_ma.compressed(), template_ma.compressed()])
-                        )[0, 1]
-
-                        nantmp = sel & np.isnan(template)
-                        template[nantmp] = A[nantmp]
-                        template[sel] = (1 - params["alpha"]) * template[sel] + params[
-                            "alpha"
-                        ] * A[sel]
-
-                        initR = round(motionDSr[DSframe])
-                        initC = round(motionDSc[DSframe])
-
-                tDS = (
-                    np.multiply(np.arange(1, nDSframes + 1), params["dsFac"])
-                    - 2 ** (params["ds_time"] - 1)
-                    + 0.5
-                )
-
-                # Create the new time points
-                new_time_points = np.arange(
-                    0, (2 ** params["ds_time"]) * nDSframes)
-
-                # Pchip Interpolator for motionC and motionR with extrapolation
-                pchip_interpolator_c = PchipInterpolator(
-                    tDS, motionDSc, extrapolate=True)
-                pchip_interpolator_r = PchipInterpolator(
-                    tDS, motionDSr, extrapolate=True)
-                motionC = pchip_interpolator_c(new_time_points)
-                motionR = pchip_interpolator_r(new_time_points)
-
-                # Nearest neighbor interpolation for aError with extrapolation
-                nearest_interpolator = interp1d(
-                    tDS, aErrorDS, kind="nearest", fill_value="extrapolate"
-                )
-                aError = nearest_interpolator(new_time_points)
-
-                params["maxshiftC"] = int(np.ceil(np.max(np.abs(motionC))))
-                params["maxshiftR"] = int(np.ceil(np.max(np.abs(motionR))))
-
-                viewR, viewC = np.meshgrid(
-                    np.arange(sz[0] + 2 * params["maxshiftR"]) -
-                    params["maxshiftR"],
-                    np.arange(sz[1] + 2 * params["maxshiftC"]) -
-                    params["maxshiftC"],
-                    indexing="ij",  # This makes meshgrid behave like MATLAB's ndgrid
-                )
-
-                # Define the padding widths for each dimension
-                pad_widths = [
-                    (params["maxshiftR"], params["maxshiftR"]),
-                    (params["maxshiftC"], params["maxshiftC"]),
-                    (0, 0),
-                ]
-
-                # Pad the array using np.pad
-                tt = np.pad(GT["ROIs"], pad_widths,
-                            mode="constant", constant_values=0)
-
-                if params["nsites"]:
-                    IF = np.reshape(tt, (-1, params["nsites"]))
+                GT["ROIs"] = idealFilts[selZ_grid, selR_grid, selC_grid]
 
                 # Save the raw data
-                output_directory = os.path.join(
-                    output_path, params["SimDescription"])
+                output_directory = os.path.join(output_path, params["SimDescription"])
                 # Create the output directory if it doesn't exist
                 os.makedirs(output_directory, exist_ok=True)
 
@@ -650,8 +459,7 @@ def run(params, data_dir, output_path, seed=0):
                 )
 
                 if params["writetiff"]:
-                    fnwrite_tif = os.path.join(
-                        output_directory, f"{fnstem}.tif")
+                    fnwrite_tif = os.path.join(output_directory, f"{fnstem}.tif")
                     print(f"Writing {fnwrite_tif} as tiff...")
                     tifffile.imwrite(fnwrite_tif, Ad_reshaped)
                 else:
@@ -660,73 +468,23 @@ def run(params, data_dir, output_path, seed=0):
                     # Create a new h5 file
                     with h5py.File(fnwrite_AD, "w") as f:
                         # Create a dataset and write the data
-                        f.create_dataset(
-                            "data", data=Ad_reshaped, compression="gzip")
+                        f.create_dataset("data", data=Ad_reshaped, compression="gzip")
 
-                GT["ROI_activity"] = np.full(
-                    (params["nsites"], params["T"]), np.nan)
-
-                for frame in range(len(motionC)):
-                    for ch in range(params["numChannels"]):
-                        # Create grid points
-                        x, y = np.meshgrid(
-                            np.arange(0, sz[1]), np.arange(0, sz[0]))
-
-                        # Calculate new grid points
-                        xi = viewC + motionC[frame]
-                        yi = viewR + motionR[frame]
-
-                        # Perform interpolation using fast cv2.remap instead of slow griddata
-                        B = cv2.remap(
-                            Ad[:, :, ch, frame],
-                            xi.astype(np.float32),
-                            yi.astype(np.float32),
-                            cv2.INTER_LINEAR,
-                            borderMode=cv2.BORDER_CONSTANT,
-                            borderValue=np.nan,
-                        )
-
-                        tmp = np.reshape(B, -1)
-                        for siteIx in range(params["nsites"]):
-                            support = IF[:, siteIx] > 0
-                            GT["ROI_activity"][siteIx, frame] = np.dot(
-                                tmp[support], IF[support, siteIx]
-                            )
-
-                fnwrite_AD = os.path.join(
-                    output_directory, f"{fnstem}_groundtruth.h5")
+                fnwrite_AD = os.path.join(output_directory, f"{fnstem}_groundtruth.h5")
                 with h5py.File(fnwrite_AD, "w") as f:
                     print(f"Writing {fnwrite_AD} as h5...")
                     f.create_dataset("GT/R", data=GT["R"], compression="gzip")
                     f.create_dataset("GT/C", data=GT["C"], compression="gzip")
                     f.create_dataset(
-                        "GT/motionR", data=GT["motionR"], compression="gzip")
-                    f.create_dataset(
-                        "GT/motionC", data=GT["motionC"], compression="gzip")
-                    f.create_dataset(
-                        "GT/activity", data=GT["activity"], compression="gzip")
-                    f.create_dataset(
-                        "GT/ROIs", data=GT["ROIs"], compression="gzip")
-                    f.create_dataset(
-                        "GT/ROI_activity", data=GT["ROI_activity"], compression="gzip"
+                        "GT/motionR", data=GT["motionR"], compression="gzip"
                     )
-
-                    f.create_dataset("aData/numChannels",
-                                     data=params["numChannels"])
-                    f.create_dataset("aData/frametime",
-                                     data=params["frametime"])
                     f.create_dataset(
-                        "aData/motionR", data=motionR, compression="gzip")
+                        "GT/motionC", data=GT["motionC"], compression="gzip"
+                    )
                     f.create_dataset(
-                        "aData/motionC", data=motionC, compression="gzip")
-                    f.create_dataset(
-                        "aData/aError", data=aError, compression="gzip")
-                    f.create_dataset("aData/aRankCorr",
-                                     data=aRankCorr, compression="gzip")
-                    f.create_dataset("aData/motionDSc",
-                                     data=motionDSc, compression="gzip")
-                    f.create_dataset("aData/motionDSr",
-                                     data=motionDSr, compression="gzip")
+                        "GT/activity", data=GT["activity"], compression="gzip"
+                    )
+                    f.create_dataset("GT/ROIs", data=GT["ROIs"], compression="gzip")
 
                 with open(output_directory + "/simulation_parameters.json", "w") as f:
                     json.dump(params, f)
@@ -764,8 +522,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--maxshift", type=int, default=30, help="Used for alignment"
     )  # Remove it for simulation
-    parser.add_argument("--IMsz", type=int, nargs=2,
-                        default=[45, 125])  # Remove this
+    parser.add_argument("--IMsz", type=int, nargs=2, default=[45, 125])  # Remove this
     # Remove as it for aignment
     parser.add_argument("--ds_time", type=int, default=3)
     # Remove as it for aignment
@@ -787,8 +544,9 @@ if __name__ == "__main__":
         default=10000,
         help="Exponential time constant of bleaching in seconds.",
     )
-    parser.add_argument("--T", type=int, default=10000,
-                        help="Number of frames to simulate.")
+    parser.add_argument(
+        "--T", type=int, default=10000, help="Number of frames to simulate."
+    )
     parser.add_argument(
         "--motionAmp",
         type=float,
