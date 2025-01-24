@@ -4,6 +4,7 @@ This capsule simulates iGluSnFR data.
 
 # Data requirements:
 This capsule requires Z-stacks to infer and apply z motion to the simulations. 
+
 CO Data Asset: `b5118287-af2c-433e-bc57-d4156844cd5f`
 ```
 root
@@ -24,6 +25,15 @@ root
 - Go to [run](code/run) and adjust `motionAmp_values`, `brightness_values`, `nsites_values` to your liking. 
 - From run change path under `subdirs` if different dataset is used, if you use a different dataset you may need to change `fn.endswith("_Ch2.ome.tif")` from [run_capsule.py](code/run_capsule.py)
 > **⚠️ WARNING:** You may want to adjust `max_parallel` based on your system requirements.
+
+# Simulation tifs:
+| ![Image 1](https://github.com/user-attachments/assets/7d16465b-bb69-42fd-ad53-db81fcd46185) | ![Image 2](https://github.com/user-attachments/assets/6585e312-3e9b-4cf0-b484-5949a242b24b) |
+|:--------------------------------------------------------:|:-------------------------------------------------------:|
+| Before adding motion correction and noise                | After adding motion correction and noise                |
+
+
+
+
 
 # Simulation generation flowchart:
 ```
