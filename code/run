@@ -13,9 +13,9 @@ python -u run_capsule.py -i ../data/Bergamo-zStacks/scan_00006-REF_Ch2.ome -o ..
 # brightness_values=(30 3 0.3 0.03)
 # nsites_values=(0 10 50)
 
-# motionAmp_values=(0 25 50 100 200)
-# brightness_values=(0.04 0.2 1 4 20)
-# nsites_values=(10 30 50)
+motionAmp_values=(0 25 50 100 200)
+brightness_values=(0.04 0.2 1 4 20)
+nsites_values=(10 30 50)
 
 # # motionAmp_values=(100) # Testing
 # # brightness_values=(2) # Testing
