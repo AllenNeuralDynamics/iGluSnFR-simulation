@@ -90,7 +90,7 @@ def run(params, data_dir, output_path, seed=0):
                 os.path.join(data_dir, fn)
             )  # TOOD: Read the Z stack. No longer a XYT rather XYZ.
             IMVol_Avg = mov[
-                5:-5, :, :
+                3:-3, :, :
             ]  # IMVol_Avg take mov which is 3d average accross time from ZXYT.
             BG = np.percentile(IMVol_Avg[~np.isnan(IMVol_Avg)], 30)
             IMVol_Avg = np.maximum(np.nan_to_num(IMVol_Avg) - BG, 0)
@@ -104,7 +104,7 @@ def run(params, data_dir, output_path, seed=0):
                 (IMVol_Avg.shape[2] + params["IMsz"][1]) // 2,
             )
             selZ = np.arange(
-                3, IMVol_Avg.shape[0] - 3
+                5, IMVol_Avg.shape[0] - 5
             )  # selZ select middle 5 frames. Remove top 5 and bottom 5 frames.
 
             tmp = median_filter(
@@ -416,24 +416,21 @@ def run(params, data_dir, output_path, seed=0):
                             flags=cv2.INTER_CUBIC,
                         )
 
-                    # Calculate Z-position with motion
+                    # Extract the motion value for the current frame
+                    z = GT['motionZ'][frameIx]
+
+                    # Calculate middle index of the volume
                     middle_frame = tmp_transformed.shape[0] // 2
-                    z_position = middle_frame + GT['motionZ'][frameIx]
-                    
-                    # Calculate base frames and interpolation weight
-                    z_floor = np.floor(z_position)
-                    z0 = int(z_floor)
-                    alpha = z_position - z_floor
-                    
-                    # Ensure indices are within valid range
-                    z0 = np.clip(z0, 0, tmp_transformed.shape[0] - 1)
-                    z1 = np.clip(z0 + 1, 0, tmp_transformed.shape[0] - 1)
-                    
-                    # Extract frames for interpolation
-                    frame_below = tmp_transformed[z0, selR_grid, selC_grid]
-                    frame_above = tmp_transformed[z1, selR_grid, selC_grid]
-                    
-                    # Linear interpolation between Z-slices
+
+                    # Determine the base frame index and interpolation weight
+                    base_frame = middle_frame + int(np.floor(z))
+                    alpha = z - np.floor(z)  # Fractional part for linear interpolation
+
+                    # Extract the neighboring frames
+                    frame_below = tmp_transformed[base_frame, selR_grid, selC_grid]
+                    frame_above = tmp_transformed[base_frame + 1, selR_grid, selC_grid]
+
+                    # Perform linear interpolation between frames
                     interpolated = (1 - alpha) * frame_below + alpha * frame_above
 
                     # Apply brightness scaling and add dark current
