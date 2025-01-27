@@ -415,25 +415,29 @@ def run(params, data_dir, output_path, seed=0):
                             borderMode=cv2.BORDER_CONSTANT,
                             flags=cv2.INTER_CUBIC,
                         )
-                    # Extract the motion value for the current frame
-                    z = GT["motionZ"][frameIx]
 
-                    # Calculate middle index of the volume
+                    # Calculate Z-position with motion
                     middle_frame = tmp_transformed.shape[0] // 2
-
-                    # Determine the base frame index and interpolation weight
-                    base_frame = middle_frame + int(np.floor(z))
-                    alpha = z - np.floor(z)  # Fractional part for linear interpolation
-
-                    # Extract the neighboring frames for z plane
-                    frame_below = tmp_transformed[base_frame, selR_grid, selC_grid]
-                    frame_above = tmp_transformed[base_frame + 1, selR_grid, selC_grid]
-
-                    # Perform linear interpolation between frames
-                    interpolated_z = (1 - alpha) * frame_below + alpha * frame_above
+                    z_position = middle_frame + GT['motionZ'][frameIx]
+                    
+                    # Calculate base frames and interpolation weight
+                    z_floor = np.floor(z_position)
+                    z0 = int(z_floor)
+                    alpha = z_position - z_floor
+                    
+                    # Ensure indices are within valid range
+                    z0 = np.clip(z0, 0, tmp_transformed.shape[0] - 1)
+                    z1 = np.clip(z0 + 1, 0, tmp_transformed.shape[0] - 1)
+                    
+                    # Extract frames for interpolation
+                    frame_below = tmp_transformed[z0, selR_grid, selC_grid]
+                    frame_above = tmp_transformed[z1, selR_grid, selC_grid]
+                    
+                    # Linear interpolation between Z-slices
+                    interpolated = (1 - alpha) * frame_below + alpha * frame_above
 
                     # Apply brightness scaling and add dark current
-                    lam = interpolated_z * B[frameIx] + params["darkrate"]
+                    lam = interpolated * B[frameIx] + params["darkrate"]
                     lam = np.maximum(lam, 0)  # Ensure lam is non-negative
 
                     # Simulate Poisson noise and scale by photonScale and excessNoise
@@ -618,6 +622,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--writetiff",
         action="store_true",
+        default=True,
         help="Whether to save the movie as tiff instead h5.",
     )
 
