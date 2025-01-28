@@ -7,7 +7,7 @@ Key features include:
 - 3D motion simulation incorporating translational and rotational drift in XYZ planes
 - Noise injection with Poisson-distributed photon noise and detector dark current
 - Multi-format output supporting both TIFF stacks and HDF5 files for flexibility
-- 
+ 
 # Data requirements:
 This capsule requires Z-stacks to infer and apply z motion to the simulations. 
 
