@@ -1,7 +1,13 @@
 # iGluSnFR-simulation
 
-This capsule simulates iGluSnFR data.
+This capsule generates synthetic dendrites simulating neural activity with realistic noise and motion artifacts closely representing 2-Photon imaging data collected from mice with fluorescent glutamate indicator iGluSnFR. 
 
+Key features include:
+- Neural activity modeling with configurable spike patterns and synaptic dynamics
+- 3D motion simulation incorporating translational and rotational drift in XYZ planes
+- Noise injection with Poisson-distributed photon noise and detector dark current
+- Multi-format output supporting both TIFF stacks and HDF5 files for flexibility
+- 
 # Data requirements:
 This capsule requires Z-stacks to infer and apply z motion to the simulations. 
 
@@ -20,6 +26,18 @@ root
         └── scan_*-REF_Ch2.ome
             └── scan_*-REF_Ch2.ome.tif
 ```
+
+# Result:
+```
+results/  
+└── parameters.csv 
+└── SimulationDescription/  
+    ├── SIMULATION_*.tif/.h5          # Raw time-lapse data   
+    ├── *_groundtruth.h5         # Ground truth coordinates/activity  
+    └── simulation_parameters.json # Configuration metadata
+```
+- parameters.csv contains SimDescription,motionAmp,brightness,nsites,scan which are the parameters used to generate simulation data. 
+- *_groundtruth.h5 Key HDF5 datasets include `/GT/R`, `/GT/C`, `/GT/Z` for 3D coordinates, `/GT/activity` for neural spike trains, and `/GT/motionC`, `/GT/motionR`, `/GT/motionZ` for motion across XYZ.  
 
 # Code execution:
 - Go to [run](code/run) and adjust `motionAmp_values`, `brightness_values`, `nsites_values` to your liking. 
