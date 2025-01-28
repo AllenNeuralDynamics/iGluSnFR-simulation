@@ -2,7 +2,7 @@
 set -ex
 pwd
 ls ../data
-# python -u run_capsule.py -i ../data/Bergamo-zStacks/scan_00006-REF_Ch2.ome -o ../results/ --motionAmp 100 --brightness 2 --nsites 10 --SimDescription 726 --numTrials 1
+# python -u run_capsule.py -i ../data/Bergamo-zStacks/scan_00008-REF_Ch2.ome -o ../results/ --motionAmp 200 --brightness 0.04 --nsites 30 --SimDescription 740 --numTrials 1
 
 # Define the ranges for motionAmp, brightness, and nsites
 # motionAmp_values=(12.5 25 50 100 200)
@@ -17,18 +17,18 @@ motionAmp_values=(0 25 50 100 200)
 brightness_values=(0.04 0.2 1 4 20)
 nsites_values=(10 30 50)
 
-# # motionAmp_values=(100) # Testing
-# # brightness_values=(2) # Testing
-# # nsites_values=(30) # Testing
+# motionAmp_values=(200) # Default setting
+# brightness_values=(0.04) # Default setting
+# nsites_values=(30) # Default setting
 
-# # Base command
-# base_command="python -u run_capsule.py --writetiff"
+# Base command
+base_command="python -u run_capsule.py --writetiff"
 
 # Counter for test directories and SimDescription
 counter=1
 
 # Maximum number of parallel processes
-max_parallel=8 #${CO_CPUS:-8}
+max_parallel=8 # Adjust based on your system's capabilities
 
 # Output directory for results
 output_dir="../results/"
@@ -40,7 +40,22 @@ mkdir -p "$output_dir"
 csv_file="${output_dir}parameters.csv"
 echo "SimDescription,motionAmp,brightness,nsites,scan" > "$csv_file"
 
-# Function to run a command and save parameters to CSV
+# Pre-generate all CSV entries to avoid concurrent writes
+for motionAmp in "${motionAmp_values[@]}"; do
+  for brightness in "${brightness_values[@]}"; do
+    for nsites in "${nsites_values[@]}"; do
+      for subdir in $(find ../data/Bergamo-zStacks/ -maxdepth 1 -mindepth 1 -type d | sort); do
+        echo "$counter,$motionAmp,$brightness,$nsites,$(basename $subdir)" >> "$csv_file"
+        counter=$((counter + 1))
+      done
+    done
+  done
+done
+
+# Reset counter for command execution
+counter=1
+
+# Function to run a command without modifying the CSV
 run_command() {
   local input_dir=$1
   local motionAmp=$2
@@ -48,9 +63,6 @@ run_command() {
   local nsites=$4
   local counter=$5
   local output_path="${output_dir}"
-  
-  # Append the parameters to the CSV file
-  echo "$counter,$motionAmp,$brightness,$nsites,$(basename $input_dir)" >> "$csv_file"
   
   # Create the output directory if it doesn't exist
   mkdir -p "$output_path"
@@ -70,10 +82,9 @@ run_command() {
     # Run the command
     eval "$full_command" && success=1 && break
     
-    # Check if the error is "Resource temporarily unavailable"
     if [ $? -ne 0 ]; then
       echo "Attempt $attempt failed. Retrying..."
-      sleep 1  # Optional: wait for a second before retrying
+      sleep 1  # Optional: wait before retrying
     fi
   done
   
@@ -83,30 +94,26 @@ run_command() {
   fi
 }
 
-# Get all subdirectories under ../data/iGluSnFR_testing-Adrian/
-# subdirs=$(find ../data/iGluSnFR_testing-Adrian/ -maxdepth 1 -mindepth 1 -type d | sort)
-subdirs=$(find ../data/Bergamo-zStacks/ -maxdepth 1 -mindepth 1 -type d | sort)   
+# Get all subdirectories
+subdirs=$(find ../data/Bergamo-zStacks/ -maxdepth 1 -mindepth 1 -type d | sort)
 
-# Loop through all combinations of motionAmp, brightness, and nsites
+# Loop through all combinations and execute commands in parallel
 for motionAmp in "${motionAmp_values[@]}"; do
   for brightness in "${brightness_values[@]}"; do
     for nsites in "${nsites_values[@]}"; do
       for subdir in $subdirs; do
-        # Run the command for each subdirectory
         run_command "$subdir" "$motionAmp" "$brightness" "$nsites" "$counter" &
         
         # Increment the counter
         counter=$((counter + 1))
 
-        # Check the number of background processes
+        # Control parallel processes
         while [ "$(jobs -r | wc -l)" -ge "$max_parallel" ]; do
-          # Wait for any background process to complete
           wait -n
         done
 
-        # Add a small delay (e.g., 50 milliseconds) before submitting the next job
-        # to maintain the order in the paramters.csv file
-        sleep 0.05  # 50 ms delay
+        # Small delay to maintain order (optional)
+        sleep 0.05
       done
     done
   done

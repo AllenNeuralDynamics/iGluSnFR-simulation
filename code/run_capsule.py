@@ -367,7 +367,8 @@ def run(params, data_dir, output_path, seed=0):
 
                 GT["motionR"] = A1 * motion[0]
                 GT["motionC"] = A2 * motion[1]
-                GT["motionZ"] = A3 * motion[2]
+                
+                GT["motionZ"] = np.clip(A3 * motion[2], -movie.shape[0] // 2 + 1, movie.shape[0] - (movie.shape[0] // 2) - 2)
 
                 Ad = np.zeros(
                     (len(selR), len(selC), params["numChannels"], params["T"]),
@@ -476,11 +477,15 @@ def run(params, data_dir, output_path, seed=0):
                     print(f"Writing {fnwrite_AD} as h5...")
                     f.create_dataset("GT/R", data=GT["R"], compression="gzip")
                     f.create_dataset("GT/C", data=GT["C"], compression="gzip")
+                    f.create_dataset("GT/Z", data=GT["Z"], compression="gzip")
                     f.create_dataset(
                         "GT/motionR", data=GT["motionR"], compression="gzip"
                     )
                     f.create_dataset(
                         "GT/motionC", data=GT["motionC"], compression="gzip"
+                    )
+                    f.create_dataset(
+                        "GT/motionZ", data=GT["motionZ"], compression="gzip"
                     )
                     f.create_dataset(
                         "GT/activity", data=GT["activity"], compression="gzip"
