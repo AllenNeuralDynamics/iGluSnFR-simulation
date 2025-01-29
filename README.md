@@ -209,3 +209,72 @@ START
 
 END
 ```
+
+```mermaid
+%%{init: {'themeVariables': { 'primaryColor': '#E3F2FD','edgeLabelBackground':'#FFF'}}}%%
+flowchart TD;
+    A([Start]) --> B[Parse CLI Arguments]
+    B --> C[Initialize Parameters]
+    C --> D[Create Output Directory]
+    D --> E{Find TIFF Files?}
+    
+    E -->|Yes| F[Process Each TIFF File]
+    E -->|No| G([Error Exit])
+    
+    subgraph FileProcessing [TIFF Processing]
+        F --> H[Extract Metadata]
+        H --> I[Load Image Volume]
+        I --> J[Preprocess Data]
+        J --> K[Create Valid Mask]
+        K --> L{Synapses Needed?}
+        
+        L -->|Yes| M[Place Synapses]
+        L -->|No| N[Skip Placement]
+        
+        M --> O[Random Mode?]
+        O -->|Yes| P[Random Placement]
+        O -->|No| Q[Distance-Constrained Placement]
+    end
+    
+    F --> R[For Each Trial]
+    
+    subgraph TrialSimulation [Trial Processing]
+        R --> S[Generate Activity]
+        S --> T[Create Base Movie]
+        T --> U[Simulate 3D Motion]
+        U --> V[Apply Motion Transform]
+        V --> W[Add Photon Noise]
+        W --> X[Inject Excess Noise]
+    end
+    
+    R --> Y[Save Outputs]
+    
+    subgraph DataOutput [Output Handling]
+        Y --> Z[Reshape Data]
+        Z --> AA{TIFF Format?}
+        AA -->|Yes| AB[Write TIFF]
+        AA -->|No| AC[Write HDF5]
+        Y --> AD[Save Ground Truth]
+        AD --> AE[Store Coordinates]
+        AD --> AF[Save Motion Vectors]
+        AD --> AG[Save Activity Data]
+    end
+    
+    Y --> A2([End])
+
+    style A fill:#4CAF50,stroke:#2E7D32
+    style G fill:#B71C1C,stroke:#D32F2F
+    style E fill:#FFC107,stroke:#FFA000
+    style FileProcessing fill:#E1F5FE,stroke:#039BE5
+    style TrialSimulation fill:#F3E5F5,stroke:#9C27B0
+    style DataOutput fill:#E8F5E9,stroke:#43A047
+    style A2 fill:#4CAF50,stroke:#2E7D32
+
+    classDef decision fill:#FFECB3,stroke:#FFA000;
+    classDef process fill:#B3E5FC,stroke:#039BE5;
+    classDef io fill:#C8E6C9,stroke:#43A047;
+    class E,L,O,AA decision
+    class B,C,D,H,I,J,K,M,N,P,Q,S,T,U,V,W,X,Y,Z,AD,AE,AF,AG process
+    class F,R,AB,AC,AE,AF,AG io
+
+```
