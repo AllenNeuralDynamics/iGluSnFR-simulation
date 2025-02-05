@@ -133,11 +133,8 @@ def run(params, fn, output_path, seed=0):
             zz, rr, cc = zip(*releaseSites)
             dz, dr, dc = releaseSites.T - np.array([zz, rr, cc])
         # Save Coordinates
-        # + 1  Adjust index for Python's 0-based indexing
         GT["R"] = rr + dr - selR[0]
-        # + 1  Adjust index for Python's 0-based indexing
         GT["C"] = cc + dc - selC[0]
-
         GT["Z"] = zz + dz - selZ[0]
 
     else:
@@ -253,7 +250,7 @@ def run(params, fn, output_path, seed=0):
         envelope = np.square(
             np.sin(np.cumsum(np.random.randn(params["T"]) / 20))
         )
-        motionPC1 = np.convolve(
+        motionPCs = [np.convolve(
             np.multiply(
                 envelope,
                 np.sin(
@@ -264,50 +261,12 @@ def run(params, fn, output_path, seed=0):
                     )
                     / 10
                 ),
-            )
-            * params["motionAmp"],
+            ),
             np.ones(5) / 5,
             mode="same",
-        )
-        motionPC2 = np.convolve(
-            np.multiply(
-                envelope,
-                np.sin(
-                    np.convolve(
-                        np.random.randn(params["T"]) ** 3,
-                        np.ones(40) / 40,
-                        mode="same",
-                    )
-                    / 10
-                ),
-            )
-            * params["motionAmp"],
-            np.ones(5) / 5,
-            mode="same",
-        )
-        motionPC3 = np.convolve(
-            np.multiply(
-                envelope,
-                np.sin(
-                    np.convolve(
-                        np.random.randn(params["T"]) ** 3,
-                        np.ones(40) / 40,
-                        mode="same",
-                    )
-                    / 10
-                ),
-            )
-            * params["motionAmp"],
-            np.ones(5) / 5,
-            mode="same",
-        )
+        ) for _ in range(3)]
 
-        psi = np.pi * np.random.rand(1)
-        psi = psi[0]
-        theta = np.pi * np.random.rand(1)
-        theta = theta[0]
-        phi = np.pi * np.random.rand(1)
-        phi = phi[0]
+        psi, theta, phi = np.pi * np.random.rand(3)
 
         R = (
             np.array(
@@ -333,17 +292,17 @@ def run(params, fn, output_path, seed=0):
             )
         )
 
-        motion = R @ np.array([motionPC1, motionPC2, motionPC3])
+        motion = R @ np.array(motionPCs)
 
-        A1 = 1
-        A2 = 0.25
-        A3 = 0.15  # TODO: May need to fine tune for Z motion
+        # TODO: May need to fine tune for Z motion
+        motion *= np.array([[1], [0.25], [0.15]])
+        # center & normalize
+        motion -= motion.mean(-1)[:, None]
+        motion *= params['motionAmp'] / np.sqrt(np.mean(np.sum(motion**2, 0)))
 
-        GT["motionR"] = A1 * motion[0]
-        GT["motionC"] = A2 * motion[1]
-
-        GT["motionZ"] = np.clip(A3 * motion[2], -movie.shape[0] //
-                                2 + 1, movie.shape[0] - (movie.shape[0] // 2) - 2)
+        GT["motionR"], GT["motionC"] = motion[:2]
+        GT["motionZ"] = np.clip(
+            motion[2], -movie.shape[0] // 2 + 1, movie.shape[0] - (movie.shape[0] // 2) - 2)
 
         Ad = np.zeros((len(selR), len(selC), 1, params["T"]), dtype=np.float32)
         selR_grid, selC_grid = np.meshgrid(selR, selC, indexing="ij")
@@ -496,7 +455,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--darkrate", type=float, default=0.02, help="photon rate added to detector."
     )
-    parser.add_argument("--IMsz", type=int, nargs=2, default=[45, 125], help="FOV size")
+    parser.add_argument(
+        "--IMsz",
+        type=int,
+        nargs=2,
+        default=[45, 125],
+        help="FOV size",
+    )
     parser.add_argument(
         "--frametime", type=float, default=0.0023, help="Time between frames in seconds"
     )
@@ -518,8 +483,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--motionAmp",
         type=float,
-        default=100,  # JF changed, was 50
-        help="Factor that multiplies simulated sample movement",
+        default=3,  # JF changed to include normalization
+        help="RMS |shift| of simulated sample movement in pixels",
     )
     parser.add_argument(
         "--tau",
