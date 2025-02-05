@@ -474,7 +474,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bleachTau",
         type=int,
-        default=10000,
+        default=360,  # JF changed, was 10000
         help="Exponential time constant of bleaching in seconds.",
     )
     parser.add_argument(
