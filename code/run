@@ -5,20 +5,12 @@ ls ../data
 # python -u run_capsule.py -i ../data/Bergamo-zStacks/scan_00008-REF_Ch2.ome -o ../results/ --motionAmp 200 --brightness 0.04 --nsites 30 --SimDescription 740 --numTrials 1
 
 # Define the ranges for motionAmp, brightness, and nsites
-# motionAmp_values=(12.5 25 50 100 200)
-# brightness_values=(2 0.2 0.02 20 200)
-# nsites_values=(0 50)
-
-# motionAmp_values=(0 12.5 50 200)
-# brightness_values=(30 3 0.3 0.03)
-# nsites_values=(0 10 50)
-
 motionAmp_values=(0 25 50 100 200)
 brightness_values=(0.04 0.2 1 4 20)
 nsites_values=(10 30 50)
 
-# motionAmp_values=(200) # Default setting
-# brightness_values=(0.04) # Default setting
+# motionAmp_values=(100) # Default setting
+# brightness_values=(0.2) # Default setting
 # nsites_values=(30) # Default setting
 
 # Base command
