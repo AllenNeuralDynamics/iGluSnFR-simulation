@@ -2,16 +2,16 @@
 set -ex
 pwd
 ls ../data
-# python -u run_capsule.py -i ../data/zstacks/scan_00008-REF_Ch2.ome.tif -o ../results/ --motionAmp 3 --brightness 0.2 --nsites 30 --SimDescription 740 --numTrials 1
+# python -u run_capsule.py -i ../data/zstacks/scan_00008-REF_Ch2.ome.tif -o ../results/ --motionAmp 3.5 --brightness 0.2 --nsites 30 --SimDescription 740 --numTrials 1
 
 # Define the ranges for motionAmp, brightness, and nsites
-motionAmp_values=(0 1 2 3 5)
-brightness_values=(0.04 0.2 1 4 20)
-nsites_values=(10 30 50)
+# motionAmp_values=(0 2 3.5 5 7)
+# brightness_values=(0.04 0.2 1 4 20)
+# nsites_values=(10 30 50)
 
-# motionAmp_values=(3) # Default setting
-# brightness_values=(0.2) # Default setting
-# nsites_values=(30) # Default setting
+motionAmp_values=(3.5) # Default setting
+brightness_values=(0.2) # Default setting
+nsites_values=(30) # Default setting
 
 # Base command
 base_command="python -u run_capsule.py --writetiff"

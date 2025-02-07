@@ -247,7 +247,7 @@ def run(params, fn, output_path, seed=0):
             ] = sFilt
 
         # Simulate motion and noise
-        envelope = np.square(
+        envelope = 1 + np.square(
             np.sin(np.cumsum(np.random.randn(params["T"]) / 20))
         )
         motionPCs = [np.convolve(
@@ -474,7 +474,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bleachTau",
         type=int,
-        default=360,  # JF changed, was 10000
+        default=2400,  # JF changed, was 10000
         help="Exponential time constant of bleaching in seconds.",
     )
     parser.add_argument(
@@ -483,7 +483,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--motionAmp",
         type=float,
-        default=3,  # JF changed to include normalization
+        default=3.5,  # JF changed to include normalization
         help="RMS |shift| of simulated sample movement in pixels",
     )
     parser.add_argument(
