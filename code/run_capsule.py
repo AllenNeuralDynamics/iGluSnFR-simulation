@@ -295,7 +295,7 @@ def run(params, fn, output_path, seed=0):
         motion = R @ np.array(motionPCs)
 
         # TODO: May need to fine tune for Z motion
-        motion *= np.array([[1], [0.25], [0.15]])
+        motion *= np.array([[1], [0.6], [0.15]])
         # center & normalize
         motion -= motion.mean(-1)[:, None]
         motion *= params['motionAmp'] / np.sqrt(np.mean(np.sum(motion**2, 0)))
@@ -507,7 +507,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--photonScale",
         type=int,
-        default=600,  # JF changed, was 1000
+        default=1000,
         help="Amplitude of a single photon in digitizer units.",
     )  # Won't vary in practice
     parser.add_argument(
