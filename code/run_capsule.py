@@ -468,7 +468,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--brightness",
         type=float,
-        default=0.2,  # JF changed, was 2
+        default=0.25,  # JF changed, was 2
         help="Proportional factor that multiplies the sample brightness",
     )
     parser.add_argument(
@@ -507,7 +507,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--photonScale",
         type=int,
-        default=1000,
+        default=600,  # JF changed, was 1000
         help="Amplitude of a single photon in digitizer units.",
     )  # Won't vary in practice
     parser.add_argument(
