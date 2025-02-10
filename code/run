@@ -2,15 +2,15 @@
 set -ex
 pwd
 ls ../data
-# python -u run_capsule.py -i ../data/Bergamo-zStacks/scan_00008-REF_Ch2.ome -o ../results/ --motionAmp 200 --brightness 0.04 --nsites 30 --SimDescription 740 --numTrials 1
+# python -u run_capsule.py -i ../data/zstacks/scan_00008-REF_Ch2.ome.tif -o ../results/ --motionAmp 3.5 --brightness 0.25 --nsites 30 --SimDescription 740 --numTrials 1
 
 # Define the ranges for motionAmp, brightness, and nsites
-motionAmp_values=(0 25 50 100 200)
-brightness_values=(0.04 0.2 1 4 20)
+motionAmp_values=(0 2 3.5 5 7)
+brightness_values=(0.05 0.25 1 5 25)
 nsites_values=(10 30 50)
 
-# motionAmp_values=(100) # Default setting
-# brightness_values=(0.2) # Default setting
+# motionAmp_values=(3.5) # Default setting
+# brightness_values=(0.25) # Default setting
 # nsites_values=(30) # Default setting
 
 # Base command
@@ -28,6 +28,10 @@ output_dir="../results/"
 # Create the output directory if it doesn't exist
 mkdir -p "$output_dir"
 
+
+# Get all zstack tif files
+files=$(find ../data/zstacks/ -maxdepth 1 -mindepth 1 | sort)
+
 # Initialize the CSV file
 csv_file="${output_dir}parameters.csv"
 echo "SimDescription,motionAmp,brightness,nsites,scan" > "$csv_file"
@@ -36,8 +40,8 @@ echo "SimDescription,motionAmp,brightness,nsites,scan" > "$csv_file"
 for motionAmp in "${motionAmp_values[@]}"; do
   for brightness in "${brightness_values[@]}"; do
     for nsites in "${nsites_values[@]}"; do
-      for subdir in $(find ../data/Bergamo-zStacks/ -maxdepth 1 -mindepth 1 -type d | sort); do
-        echo "$counter,$motionAmp,$brightness,$nsites,$(basename $subdir)" >> "$csv_file"
+      for file in $files; do
+        echo "$counter,$motionAmp,$brightness,$nsites,$(basename $file)" >> "$csv_file"
         counter=$((counter + 1))
       done
     done
@@ -49,7 +53,7 @@ counter=1
 
 # Function to run a command without modifying the CSV
 run_command() {
-  local input_dir=$1
+  local input_file=$1
   local motionAmp=$2
   local brightness=$3
   local nsites=$4
@@ -60,7 +64,7 @@ run_command() {
   mkdir -p "$output_path"
   
   # Construct the full command
-  local full_command="$base_command -i $input_dir -o $output_path --motionAmp $motionAmp --brightness $brightness --nsites $nsites --SimDescription $counter --numTrials 1"
+  local full_command="$base_command -i $input_file -o $output_path --motionAmp $motionAmp --brightness $brightness --nsites $nsites --SimDescription $counter --numTrials 1"
   
   # Retry logic
   local max_retries=5 
@@ -86,15 +90,12 @@ run_command() {
   fi
 }
 
-# Get all subdirectories
-subdirs=$(find ../data/Bergamo-zStacks/ -maxdepth 1 -mindepth 1 -type d | sort)
-
 # Loop through all combinations and execute commands in parallel
 for motionAmp in "${motionAmp_values[@]}"; do
   for brightness in "${brightness_values[@]}"; do
     for nsites in "${nsites_values[@]}"; do
-      for subdir in $subdirs; do
-        run_command "$subdir" "$motionAmp" "$brightness" "$nsites" "$counter" &
+      for file in $files; do
+        run_command "$file" "$motionAmp" "$brightness" "$nsites" "$counter" &
         
         # Increment the counter
         counter=$((counter + 1))
