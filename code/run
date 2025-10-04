@@ -14,7 +14,7 @@ nsites_values=(10 30 50)
 # nsites_values=(30) # Default setting
 
 # Base command
-base_command="python -u run_capsule.py --writetiff"
+base_command="python -u run_capsule.py"
 
 # Counter for test directories and SimDescription
 counter=1

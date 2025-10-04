@@ -5,6 +5,7 @@ import re
 import cv2
 import h5py
 import numpy as np
+import sparse
 import tifffile
 from ScanImageTiffReader import ScanImageTiffReader
 from scipy.ndimage import gaussian_filter, median_filter, shift, uniform_filter1d
@@ -62,7 +63,7 @@ def run(params, fn, output_path, seed=0):
 
     GT = {}  # Groundtruth dictionary
     # TOOD: Read the Z stack. No longer a XYT rather XYZ.
-    mov = tifffile.imread(fn)
+    mov = tifffile.imread(fn).astype("f4")
     IMVol_Avg = mov[
         3:-3, :, :
     ]  # IMVol_Avg take mov which is 3d average accross time from ZXYT.
@@ -141,18 +142,14 @@ def run(params, fn, output_path, seed=0):
         GT["R"], GT["C"], GT["Z"] = [], [], []
 
     # Simulate synapses
-    for trialIx in tqdm(
-        range(1, params["numTrials"] + 1), desc="Simulation Progress"
-    ):
-        fnstem = (
-            f'SIMULATION_{os.path.basename(fn)[:11]}{params["SimDescription"]}_Trial{trialIx}'
-        )
+    for trialIx in tqdm(range(1, params["numTrials"] + 1), desc="Simulation Progress"):
+        fnstem = f'SIMULATION_{os.path.basename(fn)[:11]}{params["SimDescription"]}_Trial{trialIx}'
 
         B = params["brightness"] * np.exp(
             -np.arange(params["T"]) * params["frametime"] / params["bleachTau"]
         )
 
-        activity = np.zeros((params["nsites"], params["T"]))
+        activity = np.zeros((params["nsites"], params["T"]), dtype="f4")
         if params["nsites"] > 0:
             # Generate random data
             random_data = np.random.rand(*activity.shape)
@@ -172,27 +169,22 @@ def run(params, fn, output_path, seed=0):
                 params["maxspike"],
                 np.maximum(
                     params["minspike"],
-                    params["spikeAmp"]
-                    * np.random.randn(*activity[spikes].shape),
+                    params["spikeAmp"] *
+                    np.random.randn(*activity[spikes].shape),
                 ),
             )
 
             activity = convolve(
                 activity, kernel.reshape(1, -1), mode="same", method="direct"
-            )
+            ).astype("f4")
 
-        # Initialize movie and idealFilts
-        movie = np.tile(
-            IMVol_Avg[:, :, :, None], (1, 1, 1, params["T"])
-        )  # TODO: Ask MX if using 11 Z stacks is enough for movie?
-        idealFilts = np.zeros((*IMVol_Avg.shape, params["nsites"]))
+        # Initialize idealFilts
+        idealFilts = np.zeros((*IMVol_Avg.shape, params["nsites"]), dtype="f4")
         # Iterate over sites
         for siteN in range(params["nsites"]):
             # Extract subarray S
             S = IMVol_Avg[
-                np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0): int(
-                    zz[siteN]
-                )
+                np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0): int(zz[siteN])
                 + int(np.ceil(sw / 2))
                 + 1,
                 np.maximum((int(rr[siteN]) - sw), 0): int(rr[siteN]) + sw + 1,
@@ -217,34 +209,17 @@ def run(params, fn, output_path, seed=0):
             # Apply translation to skernel and multiply by S
             sFilt = np.multiply(S, filtered_kernel)
 
-            # Multiply sFilt by activity and reshape
-            temp = np.multiply(
-                sFilt[:, :, :, None], activity[siteN, :].reshape(1, 1, 1, -1)
-            )
-
-            # Add temp to corresponding subarray in movie
-            movie[
-                np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0): int(
-                    zz[siteN]
-                )
-                + int(np.ceil(sw / 2))
-                + 1,
-                np.maximum((int(rr[siteN]) - sw), 0): int(rr[siteN]) + sw + 1,
-                np.maximum((int(cc[siteN]) - sw), 0): int(cc[siteN]) + sw + 1,
-                :,
-            ] += temp
-
             # Store sFilt in idealFilts
             idealFilts[
-                np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0): int(
-                    zz[siteN]
-                )
+                np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0): int(zz[siteN])
                 + int(np.ceil(sw / 2))
                 + 1,
                 np.maximum((int(rr[siteN]) - sw), 0): int(rr[siteN]) + sw + 1,
                 np.maximum((int(cc[siteN]) - sw), 0): int(cc[siteN]) + sw + 1,
                 siteN,
             ] = sFilt
+
+        idealFiltsSparse = sparse.as_coo(idealFilts)
 
         # Simulate motion and noise
         envelope = 1 + np.square(
@@ -298,16 +273,15 @@ def run(params, fn, output_path, seed=0):
         motion *= np.array([[1], [0.6], [0.15]])
         # center & normalize
         motion -= motion.mean(-1)[:, None]
-        motion *= params['motionAmp'] / np.sqrt(np.mean(np.sum(motion**2, 0)))
+        motion *= params["motionAmp"] / np.sqrt(np.mean(np.sum(motion**2, 0)))
 
+        zs, rows, cols = IMVol_Avg.shape[:3]
         GT["motionR"], GT["motionC"] = motion[:2]
-        GT["motionZ"] = np.clip(
-            motion[2], -movie.shape[0] // 2 + 1, movie.shape[0] - (movie.shape[0] // 2) - 2)
+        GT["motionZ"] = np.clip(motion[2], -zs // 2 + 1, zs - (zs // 2) - 2)
 
-        Ad = np.zeros((len(selR), len(selC), 1, params["T"]), dtype=np.float32)
+        Ad = np.zeros((len(selR), len(selC), 1, params["T"]), dtype="f4")
         selR_grid, selC_grid = np.meshgrid(selR, selC, indexing="ij")
         selZ_grid, _, _ = np.meshgrid(selZ, selR, selC, indexing="ij")
-        zs, rows, cols = movie.shape[:3]
         excessNoise_file_path = "../code/utils/excess_noise_est.npy"
 
         if os.path.exists(excessNoise_file_path):
@@ -319,6 +293,7 @@ def run(params, fn, output_path, seed=0):
             excessNoise, 0.5, 2
         )  # Hardcoded for now. MX will ask JF about this!
 
+        batch_size = 200
         for frameIx in range(params["T"]):
             # Create the 2x3 transformation matrix for this frame
             M = np.float32(
@@ -332,15 +307,19 @@ def run(params, fn, output_path, seed=0):
                 ]  # Translation in rows (y-axis)
             )
 
+            if frameIx % batch_size == 0:
+                movie = IMVol_Avg[:, :, :, None] + idealFiltsSparse.dot(
+                    activity[:, frameIx: frameIx + batch_size]
+                )
             # Initialize a temporary array to store the transformed 3D volume for this frame
-            tmp_transformed = np.zeros_like(movie[:, :, :, frameIx])
+            tmp_transformed = np.zeros_like(IMVol_Avg)
 
             # Iterate over each depth slice in the 3D volume
             for depthIx in range(movie.shape[0]):
                 # Apply the transformation to each 2D slice
                 tmp_transformed[depthIx, :, :] = cv2.warpAffine(
                     movie[
-                        depthIx, :, :, frameIx
+                        depthIx, :, :, frameIx % batch_size
                     ],  # 2D slice at depthIx and frameIx
                     M,
                     (cols, rows),  # Output size (width, height)
@@ -349,7 +328,7 @@ def run(params, fn, output_path, seed=0):
                 )
 
             # Extract the motion value for the current frame
-            z = GT['motionZ'][frameIx]
+            z = GT["motionZ"][frameIx]
 
             # Calculate middle index of the volume
             middle_frame = tmp_transformed.shape[0] // 2
@@ -549,7 +528,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--writetiff",
         action="store_true",
-        default=True,
         help="Whether to save the movie as tiff instead h5.",
     )
 
