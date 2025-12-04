@@ -43,21 +43,20 @@ def run(params, fn, output_path, seed=0):
         os.makedirs(output_path)
     print("Output directory created at", output_path)
 
-    # Intialize kernel
+    # Initialize kernel
     kernel = np.exp(-np.arange(0, 8, params["frametime"] / params["tau"]))
     sw = np.ceil(3 * params["sigma"]).astype(int)
-    skernel = np.zeros((2 * sw + 1, 2 * sw + 1, sw + 1))
-    skernel[sw, sw, int(sw / 2)] = 1
-    skernel = gaussian_filter(
-        skernel, [params["sigma"], params["sigma"], params["sigma"] / 2]
-    )
+    # Note that the pixel size along z is ~2x larger than x/y, thus measured
+    # in µm the kernel (& psf) is actually not isotropic but elongated along z
+    skernel = np.zeros((2 * sw + 1,) * 3)
+    skernel[sw, sw, sw] = 1
+    skernel = gaussian_filter(skernel, [params["sigma"]] * 3)
     skernel *= (skernel >= skernel[sw].min()) / np.max(skernel)
 
     if "REGISTERED" not in fn:
         print(f"Loading {fn}...")
         metadata_str = ScanImageTiffReader(fn).metadata()
-        params["IMsz"] = extract_pixel_resolution(
-            metadata_str, [125, 45])[::-1]
+        params["IMsz"] = extract_pixel_resolution(metadata_str, [125, 45])[::-1]
 
     print(f"Loading {fn}...")
 
@@ -82,6 +81,9 @@ def run(params, fn, output_path, seed=0):
         5, IMVol_Avg.shape[0] - 5
     )  # selZ select middle 5 frames. Remove top 5 and bottom 5 frames.
 
+    # Calculate middle index of the volume
+    middle_frame = IMVol_Avg.shape[0] // 2
+
     tmp = median_filter(
         IMVol_Avg, size=(3, 3, 2)
     )  # Change IMavg to IMVol_Avg size with  size=(3, 3, 1) or size=(3, 3, 2) Not sure if filtering in Z would help.
@@ -104,12 +106,17 @@ def run(params, fn, output_path, seed=0):
 
     tmp = np.transpose(np.where(tmp))
 
+    def dist(x, y=np.zeros(3)):
+        d = x - y
+        d[0] *= 2  # pixel size along z is ~2x larger than x/y
+        return np.linalg.norm(d)
+
     if params["nsites"] > 0:
         if params["minDistance"] <= 0:
             releaseSites = tmp[
                 np.random.choice(tmp.shape[0], params["nsites"], replace=False)
             ]
-            zz, rr, cc = np.unravel_index(releaseSites, mov.shape)
+            zz, rr, cc = releaseSites.T
             dz, dr, dc = np.random.rand(3, len(rr)) - 0.5
         else:
             releaseSites = np.empty((params["nsites"], 3))
@@ -118,9 +125,17 @@ def run(params, fn, output_path, seed=0):
                 while True:
                     i = np.random.choice(len(tmp))
                     candidate = tmp[i] + np.random.rand(3) - 0.5
-                    if j == 0 or np.all(
-                        np.linalg.norm(releaseSites[:j] - candidate, axis=1)
-                        >= params["minDistance"]
+                    if (
+                        (
+                            j == 0
+                            or np.all(
+                                np.array([dist(candidate, r) for r in releaseSites[:j]])
+                                >= params["minDistance"]
+                            )
+                        )
+                        # for detectability, enforce that candiate is less than 1.5 x sigma_z
+                        # away from volume's middle plane, i.e. (motion-free) imaging plane
+                        and abs(candidate[0] - middle_frame) < 1.5 * params["sigma"]
                     ):
                         releaseSites[j] = candidate
                         tmp = np.delete(tmp, i, 0)
@@ -131,7 +146,7 @@ def run(params, fn, output_path, seed=0):
                             f"Failed to place site {j+1}/{params['nsites']} at a minimum "
                             f"distance of {params['minDistance']} within 10000 trials."
                         )
-            zz, rr, cc = zip(*releaseSites)
+            zz, rr, cc = np.round(releaseSites.T).astype(int)
             dz, dr, dc = releaseSites.T - np.array([zz, rr, cc])
         # Save Coordinates
         GT["R"] = rr + dr - selR[0]
@@ -169,8 +184,7 @@ def run(params, fn, output_path, seed=0):
                 params["maxspike"],
                 np.maximum(
                     params["minspike"],
-                    params["spikeAmp"] *
-                    np.random.randn(*activity[spikes].shape),
+                    params["spikeAmp"] * np.random.randn(*activity[spikes].shape),
                 ),
             )
 
@@ -184,18 +198,13 @@ def run(params, fn, output_path, seed=0):
         for siteN in range(params["nsites"]):
             # Extract subarray S
             S = IMVol_Avg[
-                np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0): int(zz[siteN])
-                + int(np.ceil(sw / 2))
-                + 1,
+                np.maximum((int(zz[siteN]) - sw), 0): int(zz[siteN]) + sw + 1,
                 np.maximum((int(rr[siteN]) - sw), 0): int(rr[siteN]) + sw + 1,
                 np.maximum((int(cc[siteN]) - sw), 0): int(cc[siteN]) + sw + 1,
             ]  # [Warning] Might use memory when zz is introduced.
 
             shiftedKernel = shift(skernel.T, [dz[siteN], dr[siteN], dc[siteN]])
-            zIdxs = np.arange(
-                int(zz[siteN]) - int(np.ceil(sw / 2)),
-                int(zz[siteN]) + int(np.ceil(sw / 2)) + 1,
-            )
+            zIdxs = np.arange(int(zz[siteN]) - sw, int(zz[siteN]) + sw + 1)
             rIdxs = np.arange(int(rr[siteN]) - sw, int(rr[siteN]) + sw + 1)
             cIdxs = np.arange(int(cc[siteN]) - sw, int(cc[siteN]) + sw + 1)
 
@@ -211,9 +220,7 @@ def run(params, fn, output_path, seed=0):
 
             # Store sFilt in idealFilts
             idealFilts[
-                np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0): int(zz[siteN])
-                + int(np.ceil(sw / 2))
-                + 1,
+                np.maximum((int(zz[siteN]) - sw), 0): int(zz[siteN]) + sw + 1,
                 np.maximum((int(rr[siteN]) - sw), 0): int(rr[siteN]) + sw + 1,
                 np.maximum((int(cc[siteN]) - sw), 0): int(cc[siteN]) + sw + 1,
                 siteN,
@@ -222,24 +229,25 @@ def run(params, fn, output_path, seed=0):
         idealFiltsSparse = sparse.as_coo(idealFilts)
 
         # Simulate motion and noise
-        envelope = 1 + np.square(
-            np.sin(np.cumsum(np.random.randn(params["T"]) / 20))
-        )
-        motionPCs = [np.convolve(
-            np.multiply(
-                envelope,
-                np.sin(
-                    np.convolve(
-                        np.random.randn(params["T"]) ** 3,
-                        np.ones(40) / 40,
-                        mode="same",
-                    )
-                    / 10
+        envelope = 1 + np.square(np.sin(np.cumsum(np.random.randn(params["T"]) / 20)))
+        motionPCs = [
+            np.convolve(
+                np.multiply(
+                    envelope,
+                    np.sin(
+                        np.convolve(
+                            np.random.randn(params["T"]) ** 3,
+                            np.ones(40) / 40,
+                            mode="same",
+                        )
+                        / 10
+                    ),
                 ),
-            ),
-            np.ones(5) / 5,
-            mode="same",
-        ) for _ in range(3)]
+                np.ones(5) / 5,
+                mode="same",
+            )
+            for _ in range(3)
+        ]
 
         psi, theta, phi = np.pi * np.random.rand(3)
 
@@ -273,7 +281,10 @@ def run(params, fn, output_path, seed=0):
         motion *= np.array([[1], [0.6], [0.15]])
         # center & normalize
         motion -= motion.mean(-1)[:, None]
-        motion *= params["motionAmp"] / np.sqrt(np.mean(np.sum(motion**2, 0)))
+        RMSmotion = np.sqrt(
+            np.mean(motion[0] ** 2 + motion[1] ** 2 + (2 * motion[2]) ** 2)
+        )  # pixel size along z is ~2x larger than x/y
+        motion *= params["motionAmp"] / RMSmotion
 
         zs, rows, cols = IMVol_Avg.shape[:3]
         GT["motionR"], GT["motionC"] = motion[:2]
@@ -330,9 +341,6 @@ def run(params, fn, output_path, seed=0):
             # Extract the motion value for the current frame
             z = GT["motionZ"][frameIx]
 
-            # Calculate middle index of the volume
-            middle_frame = tmp_transformed.shape[0] // 2
-
             # Determine the base frame index and interpolation weight
             base_frame = middle_frame + int(np.floor(z))
             alpha = z - np.floor(z)  # Fractional part for linear interpolation
@@ -387,18 +395,10 @@ def run(params, fn, output_path, seed=0):
             f.create_dataset("GT/R", data=GT["R"], compression="gzip")
             f.create_dataset("GT/C", data=GT["C"], compression="gzip")
             f.create_dataset("GT/Z", data=GT["Z"], compression="gzip")
-            f.create_dataset(
-                "GT/motionR", data=GT["motionR"], compression="gzip"
-            )
-            f.create_dataset(
-                "GT/motionC", data=GT["motionC"], compression="gzip"
-            )
-            f.create_dataset(
-                "GT/motionZ", data=GT["motionZ"], compression="gzip"
-            )
-            f.create_dataset(
-                "GT/activity", data=GT["activity"], compression="gzip"
-            )
+            f.create_dataset("GT/motionR", data=GT["motionR"], compression="gzip")
+            f.create_dataset("GT/motionC", data=GT["motionC"], compression="gzip")
+            f.create_dataset("GT/motionZ", data=GT["motionZ"], compression="gzip")
+            f.create_dataset("GT/activity", data=GT["activity"], compression="gzip")
             f.create_dataset("GT/ROIs", data=GT["ROIs"], compression="gzip")
 
         with open(output_directory + "/simulation_parameters.json", "w") as f:
@@ -457,7 +457,10 @@ if __name__ == "__main__":
         help="Exponential time constant of bleaching in seconds.",
     )
     parser.add_argument(
-        "--T", type=int, default=10000, help="Number of frames to simulate."
+        "--T",
+        type=int,
+        default=10000,  # the recordings corresponding to the scans have 337028 to 337068
+        help="Number of frames to simulate.",
     )
     parser.add_argument(
         "--motionAmp",
@@ -498,7 +501,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--minDistance",
         type=float,
-        default=1.5,  # JF added
+        default=0.5,  # JF added
         help="Minimum distance between synapses.",
     )
     parser.add_argument(
