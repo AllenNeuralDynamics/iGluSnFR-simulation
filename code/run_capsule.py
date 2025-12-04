@@ -46,10 +46,10 @@ def run(params, fn, output_path, seed=0):
     # Intialize kernel
     kernel = np.exp(-np.arange(0, 8, params["frametime"] / params["tau"]))
     sw = np.ceil(3 * params["sigma"]).astype(int)
-    skernel = np.zeros((2 * sw + 1, 2 * sw + 1, sw + 1))
-    skernel[sw, sw, int(sw / 2)] = 1
+    skernel = np.zeros((2 * sw + 1, 2 * sw + 1, 2 * sw + 1))
+    skernel[sw, sw, sw] = 1
     skernel = gaussian_filter(
-        skernel, [params["sigma"], params["sigma"], params["sigma"] / 2]
+        skernel, [params["sigma"], params["sigma"], params["sigma"]]
     )
     skernel *= (skernel >= skernel[sw].min()) / np.max(skernel)
 
@@ -131,7 +131,7 @@ def run(params, fn, output_path, seed=0):
                             f"Failed to place site {j+1}/{params['nsites']} at a minimum "
                             f"distance of {params['minDistance']} within 10000 trials."
                         )
-            zz, rr, cc = zip(*releaseSites)
+            zz, rr, cc = zip(*np.round(releaseSites))
             dz, dr, dc = releaseSites.T - np.array([zz, rr, cc])
         # Save Coordinates
         GT["R"] = rr + dr - selR[0]
@@ -184,8 +184,8 @@ def run(params, fn, output_path, seed=0):
         for siteN in range(params["nsites"]):
             # Extract subarray S
             S = IMVol_Avg[
-                np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0): int(zz[siteN])
-                + int(np.ceil(sw / 2))
+                np.maximum((int(zz[siteN]) - int(np.ceil(sw))), 0): int(zz[siteN])
+                + int(np.ceil(sw))
                 + 1,
                 np.maximum((int(rr[siteN]) - sw), 0): int(rr[siteN]) + sw + 1,
                 np.maximum((int(cc[siteN]) - sw), 0): int(cc[siteN]) + sw + 1,
@@ -193,8 +193,8 @@ def run(params, fn, output_path, seed=0):
 
             shiftedKernel = shift(skernel.T, [dz[siteN], dr[siteN], dc[siteN]])
             zIdxs = np.arange(
-                int(zz[siteN]) - int(np.ceil(sw / 2)),
-                int(zz[siteN]) + int(np.ceil(sw / 2)) + 1,
+                int(zz[siteN]) - int(np.ceil(sw)),
+                int(zz[siteN]) + int(np.ceil(sw)) + 1,
             )
             rIdxs = np.arange(int(rr[siteN]) - sw, int(rr[siteN]) + sw + 1)
             cIdxs = np.arange(int(cc[siteN]) - sw, int(cc[siteN]) + sw + 1)
@@ -211,8 +211,8 @@ def run(params, fn, output_path, seed=0):
 
             # Store sFilt in idealFilts
             idealFilts[
-                np.maximum((int(zz[siteN]) - int(np.ceil(sw / 2))), 0): int(zz[siteN])
-                + int(np.ceil(sw / 2))
+                np.maximum((int(zz[siteN]) - int(np.ceil(sw))), 0): int(zz[siteN])
+                + int(np.ceil(sw))
                 + 1,
                 np.maximum((int(rr[siteN]) - sw), 0): int(rr[siteN]) + sw + 1,
                 np.maximum((int(cc[siteN]) - sw), 0): int(cc[siteN]) + sw + 1,
@@ -289,9 +289,12 @@ def run(params, fn, output_path, seed=0):
         else:
             print(f"excessNoise File not found: {excessNoise_file_path}")
 
-        excessNoise = np.clip(
-            excessNoise, 0.5, 2
-        )  # Hardcoded for now. MX will ask JF about this!
+        excessNoise = 1/excessNoise
+        excessNoise /= excessNoise.min()
+
+        # excessNoise = np.clip(
+        #     excessNoise, 0.5, 2
+        # )  # Hardcoded for now. MX will ask JF about this!
 
         batch_size = 200
         for frameIx in range(params["T"]):
@@ -348,12 +351,23 @@ def run(params, fn, output_path, seed=0):
             lam = interpolated * B[frameIx] + params["darkrate"]
             lam = np.maximum(lam, 0)  # Ensure lam is non-negative
 
+            photonCts = np.random.poisson(lam * excessNoise[: params["IMsz"][0], : params["IMsz"][1]])
+
+            pmtVals = photonCts
+
+            m = params["photonScale"] * photonCts[photonCts > 0]
+            v = params["pmtVarScale"] * photonCts[photonCts > 0]
+
+            pmtVals[photonCts > 0] = np.random.lognormal(np.log(m**2 / np.sqrt(v + m**2)), np.sqrt(np.log(v/m**2+1)))
+
+            Ad[:, :, 0, frameIx] = pmtVals + np.random.randn(pmtVals.shape[0],pmtVals.shape[1]) * params["electronicNoise"]
+
             # Simulate Poisson noise and scale by photonScale and excessNoise
-            Ad[:, :, 0, frameIx] = (
-                np.random.poisson(lam)
-                * params["photonScale"]
-                * excessNoise[: params["IMsz"][0], : params["IMsz"][1]]
-            )
+            # Ad[:, :, 0, frameIx] = (
+            #     np.random.poisson(lam)
+            #     * params["photonScale"]
+            #     * excessNoise[: params["IMsz"][0], : params["IMsz"][1]]
+            # )
 
         # The Ad array now contains the simulated data for this trial
 
@@ -447,7 +461,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--brightness",
         type=float,
-        default=0.25,  # JF changed, was 2
+        default=1,  # JF changed, was 2
         help="Proportional factor that multiplies the sample brightness",
     )
     parser.add_argument(
@@ -518,6 +532,18 @@ if __name__ == "__main__":
         type=int,
         default=2,
         help="Mean fractional change in a spiking event.",
+    )
+    parser.add_argument(
+        "--pmtVarScale",
+        type=int,
+        default=20000,
+        help="PMT noise variance multiplier on photon counts",
+    )
+    parser.add_argument(
+        "--electronicNoise",
+        type=int,
+        default=12,
+        help="Standard deviation of additive electronic noise",
     )
     parser.add_argument(
         "--numTrials",
