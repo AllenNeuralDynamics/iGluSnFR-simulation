@@ -300,9 +300,12 @@ def run(params, fn, output_path, seed=0):
         else:
             print(f"excessNoise File not found: {excessNoise_file_path}")
 
-        excessNoise = np.clip(
-            excessNoise, 0.5, 2
-        )  # Hardcoded for now. MX will ask JF about this!
+        excessNoise = 1/excessNoise
+        excessNoise /= excessNoise.min()
+
+        # excessNoise = np.clip(
+        #     excessNoise, 0.5, 2
+        # )  # Hardcoded for now. MX will ask JF about this!
 
         batch_size = 200
         for frameIx in range(params["T"]):
@@ -356,12 +359,23 @@ def run(params, fn, output_path, seed=0):
             lam = interpolated * B[frameIx] + params["darkrate"]
             lam = np.maximum(lam, 0)  # Ensure lam is non-negative
 
+            photonCts = np.random.poisson(lam * excessNoise[: params["IMsz"][0], : params["IMsz"][1]])
+
+            pmtVals = photonCts
+
+            m = params["photonScale"] * photonCts[photonCts > 0]
+            v = params["pmtVarScale"] * photonCts[photonCts > 0]
+
+            pmtVals[photonCts > 0] = np.random.lognormal(np.log(m**2 / np.sqrt(v + m**2)), np.sqrt(np.log(v/m**2+1)))
+
+            Ad[:, :, 0, frameIx] = pmtVals / excessNoise[: params["IMsz"][0], : params["IMsz"][1]] + np.random.randn(pmtVals.shape[0],pmtVals.shape[1]) * params["electronicNoise"]
+
             # Simulate Poisson noise and scale by photonScale and excessNoise
-            Ad[:, :, 0, frameIx] = (
-                np.random.poisson(lam)
-                * params["photonScale"]
-                * excessNoise[: params["IMsz"][0], : params["IMsz"][1]]
-            )
+            # Ad[:, :, 0, frameIx] = (
+            #     np.random.poisson(lam)
+            #     * params["photonScale"]
+            #     * excessNoise[: params["IMsz"][0], : params["IMsz"][1]]
+            # )
 
         # The Ad array now contains the simulated data for this trial
 
@@ -447,7 +461,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--brightness",
         type=float,
-        default=0.25,  # JF changed, was 2
+        default=1,  # JF changed, was 2
         help="Proportional factor that multiplies the sample brightness",
     )
     parser.add_argument(
@@ -507,20 +521,32 @@ if __name__ == "__main__":
     parser.add_argument(
         "--minspike",
         type=float,
-        default=0.3,
+        default=0.3 * 2,
         help="Minimum fractional change in a spiking event.",
     )
     parser.add_argument(
         "--maxspike",
         type=float,
-        default=4,
+        default=4 * 2,
         help="Maximum fractional change in a spiking event.",
     )
     parser.add_argument(
         "--spikeAmp",
         type=int,
-        default=2,
+        default=2 * 2,
         help="Mean fractional change in a spiking event.",
+    )
+    parser.add_argument(
+        "--pmtVarScale",
+        type=int,
+        default=20000,
+        help="PMT noise variance multiplier on photon counts",
+    )
+    parser.add_argument(
+        "--electronicNoise",
+        type=int,
+        default=12,
+        help="Standard deviation of additive electronic noise",
     )
     parser.add_argument(
         "--numTrials",
