@@ -360,7 +360,7 @@ def run(params, fn, output_path, seed=0):
 
             pmtVals[photonCts > 0] = np.random.lognormal(np.log(m**2 / np.sqrt(v + m**2)), np.sqrt(np.log(v/m**2+1)))
 
-            Ad[:, :, 0, frameIx] = pmtVals + np.random.randn(pmtVals.shape[0],pmtVals.shape[1]) * params["electronicNoise"]
+            Ad[:, :, 0, frameIx] = pmtVals / excessNoise[: params["IMsz"][0], : params["IMsz"][1]] + np.random.randn(pmtVals.shape[0],pmtVals.shape[1]) * params["electronicNoise"]
 
             # Simulate Poisson noise and scale by photonScale and excessNoise
             # Ad[:, :, 0, frameIx] = (
@@ -518,19 +518,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--minspike",
         type=float,
-        default=0.3,
+        default=0.3 * 2,
         help="Minimum fractional change in a spiking event.",
     )
     parser.add_argument(
         "--maxspike",
         type=float,
-        default=4,
+        default=4 * 2,
         help="Maximum fractional change in a spiking event.",
     )
     parser.add_argument(
         "--spikeAmp",
         type=int,
-        default=2,
+        default=2 * 2,
         help="Mean fractional change in a spiking event.",
     )
     parser.add_argument(
