@@ -229,7 +229,7 @@ def run(params, fn, output_path, seed=0):
         idealFiltsSparse = sparse.as_coo(idealFilts)
 
         # Simulate motion and noise
-        envelope = 1 + np.square(np.sin(np.cumsum(np.random.randn(params["T"]) / 20)))
+        envelope = 1 + np.sin(np.cumsum(np.random.randn(params["T"]) / 100)) ** 50 * 3
         motionPCs = [
             np.convolve(
                 np.multiply(
