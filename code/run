@@ -9,8 +9,8 @@ motionAmp_values=(0 2 3.5 5 7)
 brightness_values=(0.05 0.25 1 5 25)
 nsites_values=(10 30 50)
 
-motionAmp_values=(3.5) # Default setting
-brightness_values=(0.25) # Default setting
+motionAmp_values=(4) # Default setting
+brightness_values=(1) # Default setting
 nsites_values=(30) # Default setting
 
 # Base command
@@ -64,7 +64,7 @@ run_command() {
   mkdir -p "$output_path"
   
   # Construct the full command
-  local full_command="$base_command -i $input_file -o $output_path --motionAmp $motionAmp --brightness $brightness --nsites $nsites --SimDescription $counter --numTrials 1"
+  local full_command="$base_command -i $input_file -o $output_path --motionAmp $motionAmp --brightness $brightness --nsites $nsites --SimDescription $counter"
   
   # Retry logic
   local max_retries=5 
