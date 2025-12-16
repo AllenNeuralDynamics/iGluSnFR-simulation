@@ -86,7 +86,7 @@ def run(params, fn, output_path, seed=0):
 
     tmp = median_filter(
         IMVol_Avg, size=(3, 3, 2)
-    )  # Change IMavg to IMVol_Avg size with  size=(3, 3, 1) or size=(3, 3, 2) Not sure if filtering in Z would help.
+    )  # size=(3, 3, 1) or size=(3, 3, 2) Not sure if filtering in Z helps.
     tmp = tmp > min(np.percentile(tmp, 97), 4 * np.mean(tmp))
 
     # Set certain regions to False
@@ -149,12 +149,12 @@ def run(params, fn, output_path, seed=0):
             zz, rr, cc = np.round(releaseSites.T).astype(int)
             dz, dr, dc = releaseSites.T - np.array([zz, rr, cc])
         # Save Coordinates
+        GT["Z"] = zz + dz - selZ[0]
         GT["R"] = rr + dr - selR[0]
         GT["C"] = cc + dc - selC[0]
-        GT["Z"] = zz + dz - selZ[0]
 
     else:
-        GT["R"], GT["C"], GT["Z"] = [], [], []
+        GT["Z"], GT["R"], GT["C"] = [], [], []
 
     # Simulate synapses
     for trialIx in tqdm(range(1, params["numTrials"] + 1), desc="Simulation Progress"):
@@ -230,24 +230,19 @@ def run(params, fn, output_path, seed=0):
 
         # Simulate motion and noise
         envelope = 1 + np.sin(np.cumsum(np.random.randn(params["T"]) / 100)) ** 50 * 3
-        motionPCs = [
-            np.convolve(
-                np.multiply(
-                    envelope,
-                    np.sin(
-                        np.convolve(
-                            np.random.randn(params["T"]) ** 3,
-                            np.ones(40) / 40,
-                            mode="same",
-                        )
-                        / 10
-                    ),
+        motionPCs = uniform_filter1d(
+            np.multiply(
+                envelope,
+                np.sin(
+                    uniform_filter1d(
+                        np.random.randn(3, params["T"]) ** 3,
+                        40,
+                    )
+                    / 10
                 ),
-                np.ones(5) / 5,
-                mode="same",
-            )
-            for _ in range(3)
-        ]
+            ),
+            12,
+        )
 
         psi, theta, phi = np.pi * np.random.rand(3)
 
@@ -278,17 +273,17 @@ def run(params, fn, output_path, seed=0):
         motion = R @ np.array(motionPCs)
 
         # TODO: May need to fine tune for Z motion
-        motion *= np.array([[1], [0.6], [0.15]])
+        motion *= np.array([[0.15], [0.6], [1]])
         # center & normalize
         motion -= motion.mean(-1)[:, None]
         RMSmotion = np.sqrt(
-            np.mean(motion[0] ** 2 + motion[1] ** 2 + (2 * motion[2]) ** 2)
-        )  # pixel size along z is ~2x larger than x/y
+            np.mean((2 * motion[0]) ** 2 + motion[1] ** 2 + motion[2] ** 2)
+        )  # pixel size along Z is ~2x larger than R/C
         motion *= params["motionAmp"] / RMSmotion
 
         zs, rows, cols = IMVol_Avg.shape[:3]
-        GT["motionR"], GT["motionC"] = motion[:2]
-        GT["motionZ"] = np.clip(motion[2], -zs // 2 + 1, zs - (zs // 2) - 2)
+        GT["motionZ"] = np.clip(motion[0], -zs // 2 + 1, zs - (zs // 2) - 2)
+        GT["motionR"], GT["motionC"] = motion[1:]
 
         Ad = np.zeros((len(selR), len(selC), 1, params["T"]), dtype="f4")
         selR_grid, selC_grid = np.meshgrid(selR, selC, indexing="ij")
@@ -300,12 +295,8 @@ def run(params, fn, output_path, seed=0):
         else:
             print(f"excessNoise File not found: {excessNoise_file_path}")
 
-        excessNoise = 1/excessNoise
+        excessNoise = 1 / excessNoise
         excessNoise /= excessNoise.min()
-
-        # excessNoise = np.clip(
-        #     excessNoise, 0.5, 2
-        # )  # Hardcoded for now. MX will ask JF about this!
 
         batch_size = 200
         for frameIx in range(params["T"]):
@@ -359,16 +350,24 @@ def run(params, fn, output_path, seed=0):
             lam = interpolated * B[frameIx] + params["darkrate"]
             lam = np.maximum(lam, 0)  # Ensure lam is non-negative
 
-            photonCts = np.random.poisson(lam * excessNoise[: params["IMsz"][0], : params["IMsz"][1]])
+            photonCts = np.random.poisson(
+                lam * excessNoise[: params["IMsz"][0], : params["IMsz"][1]]
+            )
 
             pmtVals = photonCts
 
             m = params["photonScale"] * photonCts[photonCts > 0]
             v = params["pmtVarScale"] * photonCts[photonCts > 0]
 
-            pmtVals[photonCts > 0] = np.random.lognormal(np.log(m**2 / np.sqrt(v + m**2)), np.sqrt(np.log(v/m**2+1)))
+            pmtVals[photonCts > 0] = np.random.lognormal(
+                np.log(m**2 / np.sqrt(v + m**2)), np.sqrt(np.log(v / m**2 + 1))
+            )
 
-            Ad[:, :, 0, frameIx] = pmtVals / excessNoise[: params["IMsz"][0], : params["IMsz"][1]] + np.random.randn(pmtVals.shape[0],pmtVals.shape[1]) * params["electronicNoise"]
+            Ad[:, :, 0, frameIx] = (
+                pmtVals / excessNoise[: params["IMsz"][0], : params["IMsz"][1]]
+                + np.random.randn(pmtVals.shape[0], pmtVals.shape[1])
+                * params["electronicNoise"]
+            )
 
             # Simulate Poisson noise and scale by photonScale and excessNoise
             # Ad[:, :, 0, frameIx] = (
@@ -406,14 +405,17 @@ def run(params, fn, output_path, seed=0):
         fnwrite_AD = os.path.join(output_directory, f"{fnstem}_groundtruth.h5")
         with h5py.File(fnwrite_AD, "w") as f:
             print(f"Writing {fnwrite_AD} as h5...")
-            f.create_dataset("GT/R", data=GT["R"], compression="gzip")
-            f.create_dataset("GT/C", data=GT["C"], compression="gzip")
-            f.create_dataset("GT/Z", data=GT["Z"], compression="gzip")
-            f.create_dataset("GT/motionR", data=GT["motionR"], compression="gzip")
-            f.create_dataset("GT/motionC", data=GT["motionC"], compression="gzip")
-            f.create_dataset("GT/motionZ", data=GT["motionZ"], compression="gzip")
-            f.create_dataset("GT/activity", data=GT["activity"], compression="gzip")
-            f.create_dataset("GT/ROIs", data=GT["ROIs"], compression="gzip")
+            for x in (
+                "Z",
+                "R",
+                "C",
+                "motionZ",
+                "motionR",
+                "motionC",
+                "activity",
+                "ROIs",
+            ):
+                f.create_dataset(f"GT/{x}", data=GT[x], compression="gzip")
 
         with open(output_directory + "/simulation_parameters.json", "w") as f:
             json.dump(params, f)
@@ -461,7 +463,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--brightness",
         type=float,
-        default=1,  # JF changed, was 2
+        default=0.6,  # JF changed, was 2
         help="Proportional factor that multiplies the sample brightness",
     )
     parser.add_argument(
