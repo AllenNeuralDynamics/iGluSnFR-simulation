@@ -170,7 +170,9 @@ def run(params, fn, output_path, seed=0):
             random_data = np.random.rand(*activity.shape)
 
             # Apply threshold
-            thresholded_data = random_data < params["activityThresh"]
+            thresholded_data = random_data < params["activityThresh"] * (
+                1 + params["activitySigma"] * np.random.randn(params["nsites"], 1)
+            )
 
             # Smooth the data with a moving mean
             smoothed_data = uniform_filter1d(
@@ -180,17 +182,14 @@ def run(params, fn, output_path, seed=0):
             # Generate spikes
             spikes = np.random.rand(*activity.shape) < smoothed_data**2
 
-            activity[spikes] = np.minimum(
+            activity[spikes] = np.clip(
+                params["spikeAmp"] * np.random.randn(*activity[spikes].shape),
+                params["minspike"],
                 params["maxspike"],
-                np.maximum(
-                    params["minspike"],
-                    params["spikeAmp"] * np.random.randn(*activity[spikes].shape),
-                ),
             )
-
             activity = convolve(
-                activity, kernel.reshape(1, -1), mode="same", method="direct"
-            ).astype("f4")
+                activity, kernel.reshape(1, -1), mode="full", method="direct"
+            ).astype("f4")[:, : params["T"]]
 
         # Initialize idealFilts
         idealFilts = np.zeros((*IMVol_Avg.shape, params["nsites"]), dtype="f4")
@@ -379,6 +378,7 @@ def run(params, fn, output_path, seed=0):
         # The Ad array now contains the simulated data for this trial
 
         GT["activity"] = activity
+        GT["spikes"] = spikes
         GT["ROIs"] = idealFilts[selZ_grid, selR_grid, selC_grid]
 
         # Save the raw data
@@ -413,6 +413,7 @@ def run(params, fn, output_path, seed=0):
                 "motionR",
                 "motionC",
                 "activity",
+                "spikes",
                 "ROIs",
             ):
                 f.create_dataset(f"GT/{x}", data=GT[x], compression="gzip")
@@ -447,8 +448,8 @@ if __name__ == "__main__":
         default="default",
         help="String describing each simulation.",
     )
-    parser.add_argument(
-        "--darkrate", type=float, default=0.02, help="photon rate added to detector."
+    parser.add_argument(  # JF changed, was 0.02
+        "--darkrate", type=float, default=0.015, help="photon rate added to detector."
     )
     parser.add_argument(
         "--IMsz",
@@ -494,7 +495,17 @@ if __name__ == "__main__":
         "--activityThresh",
         type=float,
         default=0.12,
-        help="Lower this threshrold to generate less spikes.",
+        help="Lower this threshold to generate less spikes.",
+    )
+    parser.add_argument(
+        "--activitySigma",
+        type=float,
+        default=0.2,  # JF added
+        help=(
+            "Standard deviation of the mean-1 Gaussian used to scale "
+            "activityThresh. Smaller values result in less variability "
+            "in spiking rates."
+        ),
     )
     parser.add_argument(
         "--sigma",
