@@ -449,7 +449,7 @@ if __name__ == "__main__":
         help="String describing each simulation.",
     )
     parser.add_argument(  # JF changed, was 0.02
-        "--darkrate", type=float, default=0.015, help="photon rate added to detector."
+        "--darkrate", type=float, default=0.0125, help="photon rate added to detector."
     )
     parser.add_argument(
         "--IMsz",
@@ -534,31 +534,31 @@ if __name__ == "__main__":
     parser.add_argument(
         "--minspike",
         type=float,
-        default=0.3 * 2,
+        default=0.45,
         help="Minimum fractional change in a spiking event.",
     )
     parser.add_argument(
         "--maxspike",
         type=float,
-        default=4 * 2,
+        default=6,
         help="Maximum fractional change in a spiking event.",
     )
     parser.add_argument(
         "--spikeAmp",
         type=int,
-        default=2 * 2,
+        default=3,
         help="Mean fractional change in a spiking event.",
     )
     parser.add_argument(
         "--pmtVarScale",
         type=int,
-        default=20000,
+        default=60000,
         help="PMT noise variance multiplier on photon counts",
     )
     parser.add_argument(
         "--electronicNoise",
         type=int,
-        default=12,
+        default=14,
         help="Standard deviation of additive electronic noise",
     )
     parser.add_argument(
