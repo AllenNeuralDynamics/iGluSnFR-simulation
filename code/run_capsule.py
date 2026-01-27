@@ -534,13 +534,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--minspike",
         type=float,
-        default=0.45,
+        default=None,  # if None: 0.15 * spikeAmp
         help="Minimum fractional change in a spiking event.",
     )
     parser.add_argument(
         "--maxspike",
         type=float,
-        default=6,
+        default=None,  # if None: 2 * spikeAmp
         help="Maximum fractional change in a spiking event.",
     )
     parser.add_argument(
@@ -553,19 +553,19 @@ if __name__ == "__main__":
         "--pmtVarScale",
         type=int,
         default=60000,
-        help="PMT noise variance multiplier on photon counts",
+        help="PMT noise variance multiplier on photon counts.",
     )
     parser.add_argument(
         "--electronicNoise",
         type=int,
         default=14,
-        help="Standard deviation of additive electronic noise",
+        help="Standard deviation of additive electronic noise.",
     )
     parser.add_argument(
         "--numTrials",
         type=int,
         default=1,
-        help="Number of trials with same parameters but differne random seed",
+        help="Number of trials with same parameters but different random seed.",
     )
     parser.add_argument(
         "--writetiff",
@@ -575,6 +575,10 @@ if __name__ == "__main__":
 
     # Parse the arguments
     args = parser.parse_args()
+    if args.minspike is None:
+        args.minspike = 0.15 * args.spikeAmp
+    if args.maxspike is None:
+        args.maxspike = 2 * args.spikeAmp
     # Assign the parsed arguments to params dictionary
     params = vars(args)
 

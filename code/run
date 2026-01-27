@@ -2,16 +2,18 @@
 set -ex
 pwd
 ls ../data
-# python -u run_capsule.py -i ../data/zstacks/scan_00008-REF_Ch2.ome.tif -o ../results/ --motionAmp 3.5 --brightness 0.25 --nsites 30 --SimDescription 740 --numTrials 1
+# Single Example: python -u run_capsule.py -i ../data/zstacks/scan_00008-REF_Ch2.ome.tif -o ../results/ --motionAmp 4 --brightness 0.6 --nsites 30 --SimDescription 740
 
-# Define the ranges for motionAmp, brightness, and nsites
-motionAmp_values=(0 2 3.5 5 7)
-brightness_values=(0.05 0.25 1 5 25)
-nsites_values=(10 30 50)
-
-motionAmp_values=(4) # Default setting
-brightness_values=(0.6) # Default setting
-nsites_values=(30) # Default setting
+# Define the default settings for motionAmp, brightness, spikeAmp, and nsites
+motionAmp_values=(4)
+brightness_values=(0.6)
+spikeAmp_values=(3)
+nsites_values=(30)
+# Define the ranges for motionAmp, brightness, spikeAmp, and nsites
+# motionAmp_values=(0 2 6 8)
+# brightness_values=(0.06 0.2 2 6)
+# spikeAmp_values=(1 2 4)
+# nsites_values=(10 20 40 50)
 
 # Base command
 base_command="python -u run_capsule.py"
@@ -34,15 +36,17 @@ files=$(find ../data/zstacks/ -maxdepth 1 -mindepth 1 | sort)
 
 # Initialize the CSV file
 csv_file="${output_dir}parameters.csv"
-echo "SimDescription,motionAmp,brightness,nsites,scan" > "$csv_file"
+echo "SimDescription,motionAmp,brightness,spikeAmp,nsites,scan" > "$csv_file"
 
 # Pre-generate all CSV entries to avoid concurrent writes
 for motionAmp in "${motionAmp_values[@]}"; do
   for brightness in "${brightness_values[@]}"; do
-    for nsites in "${nsites_values[@]}"; do
-      for file in $files; do
-        echo "$counter,$motionAmp,$brightness,$nsites,$(basename $file)" >> "$csv_file"
-        counter=$((counter + 1))
+    for spikeAmp in "${spikeAmp_values[@]}"; do
+      for nsites in "${nsites_values[@]}"; do
+        for file in $files; do
+          echo "$counter,$motionAmp,$brightness,$spikeAmp,$nsites,$(basename $file)" >> "$csv_file"
+          counter=$((counter + 1))
+        done
       done
     done
   done
@@ -56,15 +60,16 @@ run_command() {
   local input_file=$1
   local motionAmp=$2
   local brightness=$3
-  local nsites=$4
-  local counter=$5
+  local spikeAmp=$4
+  local nsites=$5
+  local counter=$6
   local output_path="${output_dir}"
   
   # Create the output directory if it doesn't exist
   mkdir -p "$output_path"
   
   # Construct the full command
-  local full_command="$base_command -i $input_file -o $output_path --motionAmp $motionAmp --brightness $brightness --nsites $nsites --SimDescription $counter"
+  local full_command="$base_command -i $input_file -o $output_path --motionAmp $motionAmp --brightness $brightness --spikeAmp $spikeAmp --nsites $nsites --SimDescription $counter"
   
   # Retry logic
   local max_retries=5 
@@ -93,20 +98,22 @@ run_command() {
 # Loop through all combinations and execute commands in parallel
 for motionAmp in "${motionAmp_values[@]}"; do
   for brightness in "${brightness_values[@]}"; do
-    for nsites in "${nsites_values[@]}"; do
-      for file in $files; do
-        run_command "$file" "$motionAmp" "$brightness" "$nsites" "$counter" &
-        
-        # Increment the counter
-        counter=$((counter + 1))
+    for spikeAmp in "${spikeAmp_values[@]}"; do
+      for nsites in "${nsites_values[@]}"; do
+        for file in $files; do
+          run_command "$file" "$motionAmp" "$brightness" "$spikeAmp" "$nsites" "$counter" &
+          
+          # Increment the counter
+          counter=$((counter + 1))
 
-        # Control parallel processes
-        while [ "$(jobs -r | wc -l)" -ge "$max_parallel" ]; do
-          wait -n
+          # Control parallel processes
+          while [ "$(jobs -r | wc -l)" -ge "$max_parallel" ]; do
+            wait -n
+          done
+
+          # Small delay to maintain order (optional)
+          sleep 0.05
         done
-
-        # Small delay to maintain order (optional)
-        sleep 0.05
       done
     done
   done
