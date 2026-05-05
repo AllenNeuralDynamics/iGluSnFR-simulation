@@ -4,15 +4,15 @@ pwd
 ls ../data
 # Single Example: python -u run_capsule.py -i ../data/zstacks/scan_00008-REF_Ch2.ome.tif -o ../results/ --motionAmp 4 --brightness 0.6 --nsites 30 --SimDescription 740
 
-# Define the default settings for motionAmp, brightness, spikeAmp, and nsites
+# Define the default settings for motionAmp, brightness, spikeAmpMu, and nsites
 motionAmp_values=(4)
 brightness_values=(0.6)
-spikeAmp_values=(3)
+spikeAmpMu_values=(0)
 nsites_values=(30)
-# Define the ranges for motionAmp, brightness, spikeAmp, and nsites
+# Define the ranges for motionAmp, brightness, spikeAmpMu, and nsites
 # motionAmp_values=(0 2 6 8)
 # brightness_values=(0.06 0.2 2 6)
-# spikeAmp_values=(1 2 4)
+# spikeAmpMu_values=(0)
 # nsites_values=(10 20 40 50)
 
 # Base command
@@ -36,15 +36,15 @@ files=$(find ../data/zstacks/ -maxdepth 1 -mindepth 1 | sort)
 
 # Initialize the CSV file
 csv_file="${output_dir}parameters.csv"
-echo "SimDescription,motionAmp,brightness,spikeAmp,nsites,scan" > "$csv_file"
+echo "SimDescription,motionAmp,brightness,spikeAmpMu,nsites,scan" > "$csv_file"
 
 # Pre-generate all CSV entries to avoid concurrent writes
 for motionAmp in "${motionAmp_values[@]}"; do
   for brightness in "${brightness_values[@]}"; do
-    for spikeAmp in "${spikeAmp_values[@]}"; do
+    for spikeAmpMu in "${spikeAmpMu_values[@]}"; do
       for nsites in "${nsites_values[@]}"; do
         for file in $files; do
-          echo "$counter,$motionAmp,$brightness,$spikeAmp,$nsites,$(basename $file)" >> "$csv_file"
+          echo "$counter,$motionAmp,$brightness,$spikeAmpMu,$nsites,$(basename $file)" >> "$csv_file"
           counter=$((counter + 1))
         done
       done
@@ -60,7 +60,7 @@ run_command() {
   local input_file=$1
   local motionAmp=$2
   local brightness=$3
-  local spikeAmp=$4
+  local spikeAmpMu=$4
   local nsites=$5
   local counter=$6
   local output_path="${output_dir}"
@@ -69,7 +69,7 @@ run_command() {
   mkdir -p "$output_path"
   
   # Construct the full command
-  local full_command="$base_command -i $input_file -o $output_path --motionAmp $motionAmp --brightness $brightness --spikeAmp $spikeAmp --nsites $nsites --SimDescription $counter"
+  local full_command="$base_command -i $input_file -o $output_path --motionAmp $motionAmp --brightness $brightness --spikeAmpMu $spikeAmpMu --nsites $nsites --SimDescription $counter"
   
   # Retry logic
   local max_retries=5 
@@ -98,10 +98,10 @@ run_command() {
 # Loop through all combinations and execute commands in parallel
 for motionAmp in "${motionAmp_values[@]}"; do
   for brightness in "${brightness_values[@]}"; do
-    for spikeAmp in "${spikeAmp_values[@]}"; do
+    for spikeAmpMu in "${spikeAmpMu_values[@]}"; do
       for nsites in "${nsites_values[@]}"; do
         for file in $files; do
-          run_command "$file" "$motionAmp" "$brightness" "$spikeAmp" "$nsites" "$counter" &
+          run_command "$file" "$motionAmp" "$brightness" "$spikeAmpMu" "$nsites" "$counter" &
           
           # Increment the counter
           counter=$((counter + 1))
