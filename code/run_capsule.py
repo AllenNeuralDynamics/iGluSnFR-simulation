@@ -182,11 +182,7 @@ def run(params, fn, output_path, seed=0):
             # Generate spikes
             spikes = np.random.rand(*activity.shape) < smoothed_data**2
 
-            activity[spikes] = np.clip(
-                params["spikeAmp"] * np.random.randn(*activity[spikes].shape),
-                params["minspike"],
-                params["maxspike"],
-            )
+            activity[spikes] = np.random.lognormal(params["spikeAmpMu"],params["spikeAmpSigma"],activity[spikes].shape)
             activity = convolve(
                 activity, kernel.reshape(1, -1), mode="full", method="direct"
             ).astype("f4")[:, : params["T"]]
@@ -216,6 +212,7 @@ def run(params, fn, output_path, seed=0):
 
             # Apply translation to skernel and multiply by S
             sFilt = np.multiply(S, filtered_kernel)
+            sFilt = sFilt * np.sum(S[sw][sFilt[sw] > 0]) / np.sum(sFilt[sw])
 
             # Store sFilt in idealFilts
             idealFilts[
@@ -368,13 +365,6 @@ def run(params, fn, output_path, seed=0):
                 * params["electronicNoise"]
             )
 
-            # Simulate Poisson noise and scale by photonScale and excessNoise
-            # Ad[:, :, 0, frameIx] = (
-            #     np.random.poisson(lam)
-            #     * params["photonScale"]
-            #     * excessNoise[: params["IMsz"][0], : params["IMsz"][1]]
-            # )
-
         # The Ad array now contains the simulated data for this trial
 
         GT["activity"] = activity
@@ -494,7 +484,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--activityThresh",
         type=float,
-        default=0.12,
+        default=0.07,
         help="Lower this threshold to generate less spikes.",
     )
     parser.add_argument(
@@ -532,22 +522,16 @@ if __name__ == "__main__":
         help="Minimum distance between synapses.",
     )
     parser.add_argument(
-        "--minspike",
+        "--spikeAmpMu",
         type=float,
-        default=None,  # if None: 0.15 * spikeAmp
-        help="Minimum fractional change in a spiking event.",
+        default=0,
+        help="Mu parameter for spike amplitude (dF/F) log normal distribution.",
     )
     parser.add_argument(
-        "--maxspike",
+        "--spikeAmpSigma",
         type=float,
-        default=None,  # if None: 2 * spikeAmp
-        help="Maximum fractional change in a spiking event.",
-    )
-    parser.add_argument(
-        "--spikeAmp",
-        type=int,
-        default=3,
-        help="Mean fractional change in a spiking event.",
+        default=0.25,
+        help="Sigma parameter for spike amplitude (dF/F) log normal distribution.",
     )
     parser.add_argument(
         "--pmtVarScale",
@@ -575,10 +559,7 @@ if __name__ == "__main__":
 
     # Parse the arguments
     args = parser.parse_args()
-    if args.minspike is None:
-        args.minspike = 0.15 * args.spikeAmp
-    if args.maxspike is None:
-        args.maxspike = 2 * args.spikeAmp
+
     # Assign the parsed arguments to params dictionary
     params = vars(args)
 
