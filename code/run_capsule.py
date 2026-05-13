@@ -212,7 +212,8 @@ def run(params, fn, output_path, seed=0):
 
             # Apply translation to skernel and multiply by S
             sFilt = np.multiply(S, filtered_kernel)
-            sFilt = sFilt * np.sum(S[sw][sFilt[sw] > 0]) / np.sum(sFilt[sw])
+            roi_mask = sFilt[sw] > np.max(sFilt[sw]) / np.exp(3)
+            sFilt = sFilt * np.sum(S[sw][roi_mask]) / np.sum(sFilt[sw][roi_mask])
 
             # Store sFilt in idealFilts
             idealFilts[
