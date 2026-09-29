@@ -2,18 +2,31 @@
 set -ex
 pwd
 ls ../data
-# Single Example: python -u run_capsule.py -i ../data/zstacks/scan_00008-REF_Ch2.ome.tif -o ../results/ --motionAmp 4 --brightness 0.6 --nsites 30 --SimDescription 740
+# Single Example: python -u run_capsule.py -i ../data/zstacks/758796_2024-10-01_12-04-34/pophys/scan_00001-REF_Ch2.ome.tif -o ../results/ --motionAmp 4 --brightness 0.6 --nsites 30 --SimDescription 740
+
+# Parse named App Panel parameter: --sim_set=<value>
+sim_set="default"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sim_set=*) sim_set="${1#*=}" ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
 
 # Define the default settings for motionAmp, brightness, spikeAmpMu, and nsites
 motionAmp_values=(4)
 brightness_values=(0.6)
 spikeAmpMu_values=(0)
 nsites_values=(30)
-# Define the ranges for motionAmp, brightness, spikeAmpMu, and nsites
-# motionAmp_values=(0 2 6 8)
-# brightness_values=(0.06 0.2 2 6)
-# spikeAmpMu_values=(0)
-# nsites_values=(10 20 40 50)
+# Override defaults based on sim_set
+if [[ "$sim_set" == "vary motion" ]]; then
+  motionAmp_values=(0 2 6 8)
+elif [[ "$sim_set" == "vary brightness" ]]; then
+  brightness_values=(0.06 0.2 2 6)
+elif [[ "$sim_set" == "vary # sites" ]]; then
+  nsites_values=(10 20 40 50)
+fi
 
 # Base command
 base_command="python -u run_capsule.py"
@@ -31,8 +44,8 @@ output_dir="../results/"
 mkdir -p "$output_dir"
 
 
-# Get all zstack tif files
-files=$(find ../data/zstacks/ -maxdepth 1 -mindepth 1 | sort)
+# Get all zstack tif files (new structure: {session}/pophys/*-REF_Ch2.ome.tif)
+files=$(find ../data/zstacks/ -name "*-REF_Ch2.ome.tif" | sort)
 
 # Initialize the CSV file
 csv_file="${output_dir}parameters.csv"
