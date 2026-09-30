@@ -11,20 +11,12 @@ Key features include:
 # Data requirements:
 This capsule requires Z-stacks to infer and apply z motion to the simulations. 
 
-CO Data Asset: `b5118287-af2c-433e-bc57-d4156844cd5f`
+CO Data Asset: `67c7f28b-f0d8-4694-9ce4-2d1bd4b9fab5` (mounted as `zstacks`)
 ```
-root
-└── data
-    └── Bergamo-zStacks
-        ├── scan_00001-REF_Ch2.ome
-        │   └── scan_00001-REF_Ch2.ome.tif
-        └── scan_00002-REF_Ch2.ome
-            └── scan_00002-REF_Ch2.ome.tif
-        .
-        .
-        .
-        └── scan_*-REF_Ch2.ome
-            └── scan_*-REF_Ch2.ome.tif
+zstacks/
+└── {session}/
+    └── pophys/
+        └── *-REF_Ch2.ome.tif
 ```
 
 # Result:
@@ -36,13 +28,13 @@ results/
     ├── *_groundtruth.h5         # Ground truth coordinates/activity  
     └── simulation_parameters.json # Configuration metadata
 ```
-- parameters.csv contains SimDescription,motionAmp,brightness,nsites,scan which are the parameters used to generate simulation data. 
+- parameters.csv contains SimDescription,motionAmp,brightness,spikeAmpMu,nsites,scan which are the parameters used to generate simulation data. 
 - *_groundtruth.h5 Key HDF5 datasets include `/GT/R`, `/GT/C`, `/GT/Z` for 3D coordinates, `/GT/activity` for neural spike trains, and `/GT/motionC`, `/GT/motionR`, `/GT/motionZ` for motion across XYZ.  
 
 # Code execution:
-- Go to [run](code/run) and adjust `motionAmp_values`, `brightness_values`, `nsites_values` to your liking. 
-- From run change path under `subdirs` if different dataset is used, if you use a different dataset you may need to change `fn.endswith("_Ch2.ome.tif")` from [run_capsule.py](code/run_capsule.py)
-> **⚠️ WARNING:** You may want to adjust `max_parallel` based on your system requirements.
+- The App Panel parameter `--sim_set` selects the simulation sweep: `default` (single combination), `vary motion`, `vary brightness`, or `vary # sites`. Default values are `motionAmp=4`, `brightness=0.6`, `spikeAmpMu=0`, `nsites=30`.
+- To use a custom dataset, update the `find` command in [run](code/run) to point to the correct path and file pattern.
+> **⚠️ WARNING:** You may want to adjust `max_parallel` in [run](code/run) based on your system requirements.
 
 # Simulation tifs:
 | ![Image 1](https://github.com/user-attachments/assets/7d16465b-bb69-42fd-ad53-db81fcd46185) | ![Image 2](https://github.com/user-attachments/assets/6585e312-3e9b-4cf0-b484-5949a242b24b) |
@@ -62,7 +54,7 @@ START
 │   │    - Input/output paths, simulation parameters
 │   │
 │   └─▶ Initialize Parameters (params):
-│        - Set defaults: darkrate=0.02, nsites=30, T=10000, etc.
+│        - Set defaults: darkrate=0.0125, nsites=30, T=168500, etc.
 │
 ├─▶ Create Output Directory
 │   └─▶ IF path doesn't exist → os.makedirs()
@@ -89,7 +81,7 @@ START
      │   ├─▶ Read TIFF: tifffile.imread() → mov (ZXYT)
      │   │
      │   └─▶ Preprocessing:
-     │        ├─▶ Temporal Crop: mov[5:-5] (remove first/last 5 frames)
+     │        ├─▶ Temporal Crop: mov[3:-3] (remove first/last 3 frames)
      │        ├─▶ BG Subtraction: mov - 30th percentile
      │        ├─▶ Normalization: ÷ 99th percentile
      │        └─▶ Median Filter: 3×3×2 kernel
@@ -135,7 +127,7 @@ START
           │   │
           │   ├─▶ 3. Spike Amplitude:
           │   │     - spikes = (rand() < smoothed²) #Biased towards sustained activity 
-          │   │     - amp = clip(spikeAmp×N(0,1), minspike, maxspike)
+          │   │     - amp = lognormal(spikeAmpMu, spikeAmpSigma) per spike
           │   │
           │   └─▶ 4. Calcium Convolution:
           │        - kernel = exp(-t/τ)
@@ -171,10 +163,10 @@ START
           │   │     - Build Euler matrix R(ψ,θ,φ) #Random ψ, θ, φ angles
           │   │     - motion = R @ [PC1; PC2; PC3] #Apply 3D rotation
           │   │
-          │   └─▶ 3. Scaled Motion:
-          │        - GT["motionR"] = 1×motion[0] (X-axis) 
-          │        - GT["motionC"] = 0.25×motion[1] (Y-axis)
-          │        - GT["motionZ"] = 0.15×motion[2] (Z-axis)
+          │   └─▶ 3. Scaled Motion (relative weights before RMS normalization to motionAmp):
+          │        - GT["motionZ"] = motion[0] (weight: 0.15, Z-axis)
+          │        - GT["motionR"] = motion[1] (weight: 0.6, R-axis)
+          │        - GT["motionC"] = motion[2] (weight: 1.0, C-axis)
           │
           ├─▶ Apply Motion & Noise
           │   ├─▶ 1. Per-Frame Processing:
