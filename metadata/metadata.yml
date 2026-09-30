@@ -2,7 +2,6 @@ metadata_version: 1
 name: iGluSnFR Simulation Generator
 description: Capsule for simulating iGluSnFR data.
 authors:
-- name: AIND
 - name: Caleb Shibu
 - name: Michael Xie
 - name: Johannes Friedrich
