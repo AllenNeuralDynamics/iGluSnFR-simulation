@@ -22,6 +22,7 @@ data_description_args = dict(data_summary="...")
 md = Metadata.from_metadata(
     input_md,
     process_name="simulated",
+    location="",
     new_processing=Processing(data_processes=[process]),
     **data_description_args
 )
