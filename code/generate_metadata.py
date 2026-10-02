@@ -14,7 +14,7 @@ process = get_codeocean_process_metadata(
 )
 # read metadata from json in attached assets
 # (alternatively could query via aind-data-access-api with names stored in process)
-combined_data_path = Path("/data/")
+combined_data_path = Path("/data/zstacks")
 input_md_paths = combined_data_path.glob("./*/metadata.nd.json")
 input_md = [Metadata.model_validate_json(path.read_text()) for path in input_md_paths]
 
