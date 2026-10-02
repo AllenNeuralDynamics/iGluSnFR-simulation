@@ -1,12 +1,15 @@
-# hash:sha256:5ffab529fb6c5f6caca518248df56ce9cbe72246fc6b3bb7118cf56ddb7b05e4
+# hash:sha256:99a91623bd79e5562f11a6fb16c3d8ee54108701be71184bf67b6010a1f6e8c2
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:23.1.0-4-python3.10.12-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
-COPY git-askpass /
+COPY git-ask-pass /
 
-RUN pip install -U --no-cache-dir \
+RUN --mount=type=secret,id=git-access-token \
+    GIT_ACCESS_TOKEN="$(cat /run/secrets/git-access-token)" \
+    pip install -U --no-cache-dir \
+    aind-data-schema \
     argparse \
     h5py==3.11.0 \
     matplotlib==3.10.8 \
@@ -17,4 +20,5 @@ RUN pip install -U --no-cache-dir \
     scipy==1.13.0 \
     sparse==0.17.0 \
     tifffile==2024.5.10 \
-    tqdm==4.66.4
+    tqdm==4.66.4 \
+    -e git+https://github.com/AllenNeuralDynamics/analysis-pipeline-utils.git@7b6ec46c2abdbc14318f316fc949dd8714d07a9d#egg=analysis-pipeline-utils
